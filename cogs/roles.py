@@ -22,7 +22,7 @@ class Role(Model):
     name = fields.TextField()
     color = fields.SmallIntField()
     priority = fields.IntField(default=next_priority)
-    to_remove = fields.BooleanField(default=False)
+    archived = fields.BooleanField(default=False)
     group = fields.TextField(default="default")  # users can have only one decorative role
 
     class Meta:
@@ -32,8 +32,19 @@ class Role(Model):
         return self.name
 
 
+class RoleGroup:
+    id = fields.IntField(pk=True)
+    name = fields.TextField()
+    archived = fields.BooleanField(default=False)
+    exclusive = fields.BooleanField(default=True)
+
+    def __str__(self):
+        return self.name
+
+
 class Roles(commands.Cog):
     """Roles management commands"""
+
     # :griffin_hug:
     def __init__(self, bot):
         self.bot = bot
@@ -56,17 +67,25 @@ class Roles(commands.Cog):
                 if role is not None:
                     await role.delete()
 
-    @commands.group(aliases=["roles", ], case_insensitive=True,)
+    @commands.group(aliases=["roles", ], case_insensitive=True, )
     async def role(self, ctx):
         """Role management commands, shows you your roles. You can use mentions instead of role names"""
         if ctx.invoked_subcommand is None:
-            await ctx.send(f"Your roles are: {', '.join([f'**{role.name}**' for role in ctx.author.roles[1:]])}. "
-                           f"To view available roles, use !role list")
+            await ctx.send(f"Your roles are: {', '.join([role.mention for role in ctx.author.roles[1:]])}. "
+                           f"To view available roles, use !role list", allowed_mentions=discord.AllowedMentions.none())
 
     @role.command(aliases=["all", "available", "view", ])
     async def list(self, ctx):
-        roles = await Role.exclude(to_remove=True).values_list("name", flat=True)
-        await ctx.send("Avialiable roles: \n" + "\n".join(roles))
+        def get_role_repr(role_name):
+            role = discord.utils.get(ctx.guild.roles, name=role_name)
+            return role.mention if role is not None else f"**{role_name}** *(not available yet on this server)*"
+
+        db_roles = await Role.exclude(to_remove=True).values_list("name", flat=True)
+        # embed = discord.Embed(title="Available roles:")
+
+        await ctx.send("Available roles: \n" + "\n".join(
+                       [get_role_repr(role) for role in db_roles]),
+                       allowed_mentions=discord.AllowedMentions.none())
         # print(*[(role.name, role.position) for role in ctx.guild.roles], sep="\n")
 
     @role.command(aliases=["join", "assign", ])
@@ -84,17 +103,6 @@ class Roles(commands.Cog):
 
         await member.add_roles(role)
         await ctx.send(f"Added role **{role.name}** to {member.mention}")
-
-    def get_bot_role(self, guild):
-        return discord.utils.get(guild.roles, name="Bot manager")
-
-    async def has_bot_perms(self, member: discord.Member):
-        if member == member.guild.owner or member.id in self.bot.owner_ids:
-            return True
-        bot_role = self.get_bot_role(member.guild)
-        if bot_role is not None and member.top_role >= bot_role:
-            return True
-        return False
 
     @role.command(aliases=["leave", "clear", "delete", "yeet", ])
     @commands.guild_only()
@@ -174,5 +182,5 @@ class Roles(commands.Cog):
 
     async def get_role_froup(self, group: str):
         return await Role.filter(group=group).values_list("name", flat=True)
-        #await member.remove_roles(*roles)
-        #ctx.author.add_roles(role)
+        # await member.remove_roles(*roles)
+        # ctx.author.add_roles(role)

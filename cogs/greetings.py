@@ -1,9 +1,13 @@
+import logging
+
 import discord
 from discord.ext import commands
 
 import random
 from datetime import datetime
 from dateutil import relativedelta
+
+logger = logging.getLogger(__name__)
 
 
 def display_delta(delta):
@@ -21,7 +25,8 @@ class Greetings(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
-        self._last_member = None
+        self._last_greeted_member = None
+        self._first_ready = True
         self._started_at = None
 
     def get_greeting(self, member):
@@ -42,19 +47,25 @@ class Greetings(commands.Cog):
              ]
         message = random.choice(greetings).format(member.display_name)
 
-        if self._last_member is not None and self._last_member.id == member.id:
+        if self._last_greeted_member is not None and self._last_greeted_member.id == member.id:
             message = f"{message} This feels oddly familiar..."
 
-        self._last_member = member
+        self._last_greeted_member = member
         return message
 
     @commands.Cog.listener()
     async def on_ready(self):
-        now = datetime.now()
-        self._started_at = now
-        print(f"Logged in as {self.bot.user} at {now.strftime('%d/%m/%Y, %H:%M:%S')}")
+        if self._first_ready:
+            await self.on_first_ready()
+            self._first_ready = False
+
         guilds_list = [f"[{g.name}: {g.member_count} members]" for g in self.bot.guilds]
-        print(f"Current servers: {', '.join(guilds_list)}")
+        logger.info(f"Connected. Current servers: {', '.join(guilds_list)}")
+
+    async def on_first_ready(self):
+        logger.info(f"Logged in as {self.bot.user}")
+
+        self._started_at = datetime.now()
 
         for guild in self.bot.guilds:
             channel = guild.system_channel

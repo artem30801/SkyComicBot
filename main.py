@@ -1,4 +1,5 @@
 import configparser
+import logging
 
 import asyncio
 import nest_asyncio
@@ -13,7 +14,9 @@ from cogs.errors import Errors
 from cogs.greetings import Greetings
 from cogs.reactions import Reactions
 from cogs.roles import Roles
+from cogs.emotes import Emotes
 
+logging.basicConfig(level=logging.INFO, format="[%(asctime)s] [%(levelname)-7.7s]-[%(name)-15.15s]: %(message)s")
 nest_asyncio.apply()
 
 bot = commands.Bot(command_prefix=commands.when_mentioned_or("!", "$"), case_insensitive=True,
@@ -29,6 +32,7 @@ async def main():
     bot.add_cog(Greetings(bot))
     bot.add_cog(Reactions(bot))
     bot.add_cog(Roles(bot))
+    bot.add_cog(Emotes(bot))
 
     try:
         #db_url="sqlite://skybot.db"

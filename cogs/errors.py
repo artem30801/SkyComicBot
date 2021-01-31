@@ -11,7 +11,7 @@ class Errors(commands.Cog):
         elif isinstance(error, commands.BadArgument):
             await ctx.send(f"Sorry, but your arguments are invalid: {' ,'.join(error.args)}")
         elif isinstance(error, commands.MissingRequiredArgument):
-            await ctx.send("Sorry, but you missed required argument!")
+            await ctx.send(f"Sorry, but you missed required argument! {' ,'.join(error.args)}")
         elif isinstance(error, commands.NoPrivateMessage):
             await ctx.send("You can use that only in guild!")
         else:

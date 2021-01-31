@@ -1,8 +1,13 @@
+import logging
+
 import discord
 from discord.ext import commands
 
 import re
 import os
+
+from cog_utils import send_file
+
 
 def contains_word(message: str, word: str) -> bool:
     """Returns true if there is given word in the message"""
@@ -27,17 +32,15 @@ class Reactions(commands.Cog):
 
         for keys, react in self._reactions.items():
             if any(contains_word(message.content, key) for key in keys):
+                logging.debug(f"Reacted to {message.content} message (contains {keys})")
                 await react(message)
-
-    async def send_file(self, message, path, filename=None):
-        file = discord.File(os.path.abspath(path), filename=filename or path)
-        await message.channel.send(" ", file=file)
+                break
 
     async def telling(self, message):
-        await self.send_file(message, os.path.join("reactions", "telling.gif"), "thatwouldbetelling.gif")
+        await send_file(message.channel, os.path.join("reactions", "telling.gif"), "thatwouldbetelling.gif")
 
     async def wrong_layer(self, message):
-        await self.send_file(message, os.path.join("reactions", "wrong_layer.gif"), "wronglayersong.gif")
+        await send_file(message.channel, os.path.join("reactions", "wrong_layer.gif"), "wronglayersong.gif")
 
     async def hug(self, message):
         collection = self.bot.emojis
