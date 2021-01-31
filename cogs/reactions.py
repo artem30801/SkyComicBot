@@ -17,6 +17,7 @@ class Reactions(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self._reactions = {("telling", ): self.telling,
+                           ("wrong layer", "wrong\\s[\\w]+\\slayer"): self.wrong_layer,
                            ("hug", "hugs"): self.hug}
 
     @commands.Cog.listener()
@@ -28,9 +29,15 @@ class Reactions(commands.Cog):
             if any(contains_word(message.content, key) for key in keys):
                 await react(message)
 
-    async def telling(self, message):
-        file = discord.File(os.path.abspath("telling.gif"), filename="thatwouldbetelling.gif")
+    async def send_file(self, message, path, filename=None):
+        file = discord.File(os.path.abspath(path), filename=filename or path)
         await message.channel.send(" ", file=file)
+
+    async def telling(self, message):
+        await self.send_file(message, os.path.join("reactions", "telling.gif"), "thatwouldbetelling.gif")
+
+    async def wrong_layer(self, message):
+        await self.send_file(message, os.path.join("reactions", "wrong_layer.gif"), "wronglayersong.gif")
 
     async def hug(self, message):
         collection = self.bot.emojis
