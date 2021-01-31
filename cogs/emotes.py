@@ -9,7 +9,7 @@ import glob
 import typing
 import itertools
 
-from cog_utils import fuzzy_search, abs_join, send_file
+from cogs.cog_utils import fuzzy_search, abs_join, send_file
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)

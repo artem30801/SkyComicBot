@@ -6,7 +6,7 @@ from discord.ext import commands
 import re
 import os
 
-from cog_utils import send_file
+from cogs.cog_utils import send_file
 
 
 def contains_word(message: str, word: str) -> bool:
