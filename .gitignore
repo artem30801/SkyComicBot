@@ -1,0 +1,4 @@
+venv/
+migrations/
+.ini
+.log
