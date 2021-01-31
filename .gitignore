@@ -1,4 +1,11 @@
 venv/
 migrations/
-.ini
-.log
+*.ini
+*.log
+
+# IDE files
+.vscode/
+*.code-workspace
+
+# Temp files
+__pycache__/

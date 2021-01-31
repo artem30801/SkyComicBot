@@ -1,0 +1,5 @@
+nest_asyncio
+tortoise-orm[aiomysql]
+discord.py
+python-dateutil
+fuzzywuzzy[speedup]
