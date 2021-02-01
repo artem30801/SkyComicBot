@@ -70,7 +70,10 @@ class Greetings(commands.Cog):
         for guild in self.bot.guilds:
             channel = guild.system_channel
             if channel is not None:
-                await channel.send("Hello hello! I'm back online and ready to work!")
+                try:
+                    await channel.send("Hello hello! I'm back online and ready to work!")
+                except discord.errors.Forbidden:
+                    logger.warning(f"Can't send startup message to #{channel.name} at '{guild.name}'")
 
     @commands.Cog.listener()
     async def on_member_join(self, member):
