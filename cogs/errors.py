@@ -1,7 +1,12 @@
+import logging
+
 import discord
 from discord.ext import commands
 
 import traceback
+
+logger = logging.getLogger(__name__)
+
 
 class Errors(commands.Cog):
     @commands.Cog.listener()
@@ -12,8 +17,9 @@ class Errors(commands.Cog):
             await ctx.send(f"Sorry, but your arguments are invalid: {' ,'.join(error.args)}")
         elif isinstance(error, commands.MissingRequiredArgument):
             await ctx.send(f"Sorry, but you missed required argument! {' ,'.join(error.args)}")
+        elif isinstance(error, commands.CheckFailure):
+            await ctx.send(error.args)
         elif isinstance(error, commands.NoPrivateMessage):
             await ctx.send("You can use that only in guild!")
         else:
-            print(error, type(error), isinstance(error, commands.BadArgument))
-            traceback.print_exc()
+            logger.error(f"Error {type(error)} occurred: {error} (in result of {ctx.message.content})")

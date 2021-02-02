@@ -4,6 +4,7 @@ import discord
 from discord.ext import commands
 
 import random
+import math
 from datetime import datetime
 from dateutil import relativedelta
 
@@ -28,6 +29,28 @@ class Greetings(commands.Cog):
         self._last_greeted_member = None
         self._first_ready = True
         self._started_at = None
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        if self._first_ready:
+            await self.on_first_ready()
+            self._first_ready = False
+
+        guilds_list = [f"[{g.name}: {g.member_count} members]" for g in self.bot.guilds]
+        logger.info(f"Connected. Current servers: {', '.join(guilds_list)}")
+
+    async def on_first_ready(self):
+        logger.info(f"Logged in as {self.bot.user}")
+
+        self._started_at = datetime.now()
+
+        for guild in self.bot.guilds:
+            channel = guild.system_channel
+            if channel is not None:
+                try:
+                    await channel.send("Hello hello! I'm back online and ready to work!")
+                except discord.errors.Forbidden:
+                    logger.warning(f"Can't send startup message to #{channel.name} at '{guild.name}'")
 
     def get_greeting(self, member):
         greetings = \
@@ -54,43 +77,31 @@ class Greetings(commands.Cog):
         return message
 
     @commands.Cog.listener()
-    async def on_ready(self):
-        if self._first_ready:
-            await self.on_first_ready()
-            self._first_ready = False
-
-        guilds_list = [f"[{g.name}: {g.member_count} members]" for g in self.bot.guilds]
-        logger.info(f"Connected. Current servers: {', '.join(guilds_list)}")
-
-    async def on_first_ready(self):
-        logger.info(f"Logged in as {self.bot.user}")
-
-        self._started_at = datetime.now()
-
-        for guild in self.bot.guilds:
-            channel = guild.system_channel
-            if channel is not None:
-                try:
-                    await channel.send("Hello hello! I'm back online and ready to work!")
-                except discord.errors.Forbidden:
-                    logger.warning(f"Can't send startup message to #{channel.name} at '{guild.name}'")
-
-    @commands.Cog.listener()
     async def on_member_join(self, member):
         channel = member.guild.system_channel
         if channel is not None:
             await channel.send(f"{self.get_greeting(member)} Welcome!")
 
+    @commands.command(aliases=["hi", ])
+    async def hello(self, ctx, *, member: discord.Member = None):
+        """Says hello to you or mentioned member."""
+        member = member or ctx.author
+        await ctx.send(self.get_greeting(member))
+
     @commands.command()
     async def uptime(self, ctx):
-        """Shows how long the bot was running for"""
+        """Shows how long the bot was running for."""
         now = datetime.now()
         delta = relativedelta.relativedelta(now, self._started_at)
         await ctx.send(f"I was up and running since {self._started_at.strftime('%d/%m/%Y, %H:%M:%S')} "
                        f"for {display_delta(delta)}")
 
-    @commands.command(aliases=["hi", ])
-    async def hello(self, ctx, *, member: discord.Member = None):
-        """Says hello to you or mentioned member"""
-        member = member or ctx.author
-        await ctx.send(self.get_greeting(member))
+    @commands.command()
+    async def latency(self, ctx):
+        """
+        Shows latency between bot and Discord servers.
+        Use to check if there are problems with Discord API or bot network.
+        """
+        await ctx.send(f"Current latency: {math.ceil(self.bot.latency*100)} ms")
+
+

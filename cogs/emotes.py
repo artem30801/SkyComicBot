@@ -9,10 +9,9 @@ import glob
 import typing
 import itertools
 
-from cogs.cog_utils import fuzzy_search, abs_join, send_file
+from cogs.cog_utils import fuzzy_search, abs_join, send_file, has_bot_perms
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 
 def multi_glob(*patterns):
@@ -26,7 +25,7 @@ class EmoteConverter(commands.Converter):
     async def convert(self, ctx, argument):
         key = fuzzy_search(argument, ctx.cog.emotes.keys())
         if key is None:
-            raise commands.BadArgument(f"Sorry, I cant find emote '{emote_name}'. "
+            raise commands.BadArgument(f"Sorry, I cant find emote **{argument}**. "
                                        f"Try *!emote list* command to see available emotes")
         return key
 
@@ -45,7 +44,7 @@ class Emotes(commands.Cog):
         files = multi_glob(*(abs_join("emotes", f"*{ext}") for ext in image_exts))
 
         self.emotes = {os.path.splitext(os.path.split(filename)[1])[0].replace("_", " ").strip().lower():
-                           filename for filename in files}
+                       filename for filename in files}
         logging.debug(f"Loaded emotes: {self.emotes}")
 
     @commands.group(aliases=["emotes", "e", ], case_insensitive=True, invoke_without_command=True)
@@ -59,13 +58,15 @@ class Emotes(commands.Cog):
     @emote.command(aliases=["all", "available", "view", ])
     async def list(self, ctx):
         """Shows list of available emotes."""
-        await ctx.send("Available emotes: \n" + "\n".join(self.emotes.keys()))
+        await ctx.send("Available emotes: \n" + "\n".join([f"**{emote}**" for emote in self.emotes.keys()]))
 
-    @emote.command(aliases=["new", ])
+    @emote.command(aliases=["new", "+", ])
+    @has_bot_perms()
     async def add(self, ctx, *, name: typing.Optional[str]):
         """
         Adds new emote.
         Attach image file to your message.
+        You can use this command to edit (replace) existing emote.
         """
         attachments = ctx.message.attachments
         if not attachments:
@@ -75,23 +76,25 @@ class Emotes(commands.Cog):
         filename = attachment.filename
         ext = os.path.splitext(filename)[1]
         if ext not in image_exts:
-            raise commands.BadArgument(f"File extension ({ext}) be one of {', '.join(image_exts)}")
+            raise commands.BadArgument(f"File extension ({ext}) should be one of ({', '.join(image_exts)})")
 
         if name is not None:
             if not re.fullmatch("[A-z\\s]+", name):
                 raise commands.BadArgument(
-                    "Emote name should contain only english letters, whitespaces and underscores")
+                    "Emote name should contain only english letters, whitespaces and underscores!")
             filename = f"{name.strip().replace(' ', '_')}{ext}"
+
         await attachment.save(abs_join("emotes", filename))
         self.load_emotes()
         file = discord.File(abs_join("emotes", filename), filename=filename)
-        await ctx.send(f"Successfully added emote {fuzzy_search(filename, self.emotes.keys())}", file=file)
+        await ctx.send(f"Successfully added emote **{fuzzy_search(filename, self.emotes.keys())}**.", file=file)
 
-    @emote.command(aliases=["delete", ])
+    @emote.command(aliases=["delete", "-", ])
+    @has_bot_perms()
     async def remove(self, ctx, emote_name: EmoteConverter):
         """
         Removes existing emote.
         """
         os.remove(self.emotes[emote_name])
         self.load_emotes()
-        await ctx.send(f"Successfully removed emote {emote_name}")
+        await ctx.send(f"Successfully removed emote **{emote_name}**.")

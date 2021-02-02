@@ -3,7 +3,11 @@ import logging
 import discord
 from discord.ext import commands
 
+from tortoise.functions import Max
+
 import os
+import re
+import asyncio
 
 from fuzzywuzzy import process
 from fuzzywuzzy import fuzz
@@ -24,24 +28,48 @@ async def send_file(channel, path, filename=None):
     await channel.send(" ", file=file)
 
 
+def next_number(cls_name, field="priority"):
+    def inner():
+        loop = asyncio.get_event_loop()
+        cls = globals()[cls_name]
+        max_number = loop.run_until_complete(cls.annotate(m=Max(field)).values_list("m", flat=True))[0]
+        return max_number + 1 if max_number is not None else 0
+    return inner
+
+
+def parse_params(params: str)-> dict:
+    param_list = re.findall(r'(?:[^\s,"]|"(?:\\.|[^"])*")+', params)
+    param_dict = dict(param.split('=', 1) for param in param_list)
+    param_dict = {key: value.replace('"', '') for key, value in param_dict.items()}
+    return param_dict
+
+
+def convert_to_bool(argument):
+    lowered = argument.lower()
+    if lowered in ('yes', 'y', 'true', 't', '1', 'enable', 'on'):
+        return True
+    elif lowered in ('no', 'n', 'false', 'f', '0', 'disable', 'off'):
+        return False
+    else:
+        raise commands.BadBoolArgument(lowered)
+
+
 def get_bot_role(self, guild):
     return discord.utils.get(guild.roles, name="Bot manager")
 
-# async def has_bot_perms(ctx):
-#     return await member_bot_perms(ctx.message.author)
-#
-# def is_guild_owner():
-#     def predicate(ctx):
-#         return ctx.guild is not None and ctx.guild.owner_id == ctx.author.id
-#     return commands.check(predicate)
-# #
-# async def member_bot_perms(self, member: discord.Member):
-#     if member == member.guild.owner or member.id in ctx.bot.owner_ids:
-#         return True
-#     bot_role = self.get_bot_role(member.guild)
-#     if bot_role is not None and member.top_role >= bot_role:
-#         return True
-#     return False
+
+def is_guild_owner():
+    def predicate(ctx):
+        return ctx.guild is not None and ctx.guild.owner_id == ctx.author.id
+    return commands.check(predicate)
+
+
+def has_server_perms():  # perms to manage other people on the server
+    return commands.check_any(is_guild_owner(), commands.is_owner(), commands.has_role("Bot manager"))
+
+
+def has_bot_perms():  # perms to manage bot internal DB
+    return commands.check_any(commands.is_owner())
 
 
 if __name__ == "__main__":
