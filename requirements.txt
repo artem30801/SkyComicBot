@@ -3,3 +3,4 @@ tortoise-orm[aiomysql]
 discord.py
 python-dateutil
 fuzzywuzzy[speedup]
+requests
