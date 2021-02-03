@@ -63,6 +63,9 @@ class InvalidData():
     def __getitem__(self, key):
         return self.data[key]
 
+    def __len__(self):
+        return len(self.data)
+
 
 class MemberConverter(commands.MemberConverter):
     async def convert(self, ctx, argument):
@@ -257,7 +260,8 @@ class Roles(commands.Cog):
             raise commands.BadArgument("No valid roles vere given!")
 
         if isinstance(member, InvalidData):
-            raise commands.BadArgument(f"{member[0]} is not a valid user or role")
+            error_message = f"{member[0]} is not a valid role" if len(member) > 1 else f"{member[0]} is not a valid user or role"
+            raise commands.BadArgument(error_message)
 
         if member is not None and not has_server_perms():
             raise commands.MissingPermissions("Insufficient permissions for editing other users roles")
@@ -286,7 +290,8 @@ class Roles(commands.Cog):
             raise commands.BadArgument("No valid roles vere given!")
 
         if isinstance(member, InvalidData):
-            raise commands.BadArgument(f"{member[0]} is not a valid user or role")
+            error_message = f"{member[0]} is not a valid role" if len(member) > 1 else f"{member[0]} is not a valid user or role"
+            raise commands.BadArgument(error_message)
         
         if member is not None and not has_server_perms():
             raise commands.MissingPermissions("Insufficient permissions for editing other users roles")
