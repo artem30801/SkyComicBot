@@ -51,6 +51,28 @@ class RoleGroupConverter(commands.Converter):
         return await RoleGroup.get(name=group_name)
 
 
+class InvalidData():
+    """Class-flag that signals, that we're failed to convert string to the valid user/role"""
+    
+    def __init__(self, data: [str]):
+        self.data = data
+
+    def __str__(self):
+        return ' '.join(self.data)
+    
+    def __getitem__(self, key):
+        return self.data[key]
+
+
+class MemberConverter(commands.MemberConverter):
+    async def convert(self, ctx, argument):
+        try:
+            return await super().convert(ctx, argument)
+        except commands.MemberNotFound:
+            # Maybe try users fuzzy search, but I feel like it will be slow with a lot of users on the server
+            return InvalidData(argument.split(' '))
+
+
 class DBRoleConverter(commands.RoleConverter):
     async def convert(self, ctx, argument):
         try:
@@ -229,10 +251,13 @@ class Roles(commands.Cog):
     @role.command(aliases=["join", "assign", ])
     @commands.guild_only()
     async def add(self, ctx, roles: commands.Greedy[DiscordRoleConverter], *,
-                  member: discord.Member = None):
+                  member: MemberConverter = None):
         """Add (assign) specified role(s) to you or mentioned member"""
         if not roles:
             raise commands.BadArgument("No valid roles vere given!")
+
+        if isinstance(member, InvalidData):
+            raise commands.BadArgument(f"{member[0]} is not a valid user or role")
 
         if member is not None and not has_server_perms():
             raise commands.MissingPermissions("Insufficient permissions for editing other users roles")
@@ -255,11 +280,14 @@ class Roles(commands.Cog):
     @role.command(aliases=["leave", "clear", "delete", "yeet", ])
     @commands.guild_only()
     async def remove(self, ctx, roles: commands.Greedy[DiscordRoleConverter],
-                     member: discord.Member = None):
+                     member: MemberConverter = None):
         """Remove specified role(s) from you or mentioned member"""
         if not roles:
             raise commands.BadArgument("No valid roles vere given!")
 
+        if isinstance(member, InvalidData):
+            raise commands.BadArgument(f"{member[0]} is not a valid user or role")
+        
         if member is not None and not has_server_perms():
             raise commands.MissingPermissions("Insufficient permissions for editing other users roles")
 
