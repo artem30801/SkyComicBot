@@ -345,7 +345,7 @@ class Roles(commands.Cog):
                   member: MemberConverter = None):
         """Add (assign) specified role(s) to you or mentioned member"""
         if not roles:
-            raise commands.BadArgument("No valid roles vere given!")
+            raise commands.BadArgument("No valid roles were given!")
 
         if isinstance(member, InvalidData):
             error_message = f"{member[0]} is not a valid role" if len(member) > 1 else \
@@ -378,7 +378,7 @@ class Roles(commands.Cog):
                      member: MemberConverter = None):
         """Remove specified role(s) from you or mentioned member"""
         if not roles:
-            raise commands.BadArgument("No valid roles vere given!")
+            raise commands.BadArgument("No valid roles were given!")
 
         if isinstance(member, InvalidData):
             error_message = f"{member[0]} is not a valid role" if len(member) > 1 else \
