@@ -1,4 +1,5 @@
 import logging
+from dataclasses import dataclass
 
 import discord
 from discord.ext import commands
@@ -75,31 +76,6 @@ class RoleGroupConverter(commands.Converter):
         return await RoleGroup.get(name=group_name)
 
 
-class InvalidData:
-    """Class-flag that signals, that we're failed to convert string to the valid user/role"""
-
-    def __init__(self, data: [str]):
-        self.data = data
-
-    def __str__(self):
-        return ' '.join(self.data)
-
-    def __getitem__(self, key):
-        return self.data[key]
-
-    def __len__(self):
-        return len(self.data)
-
-
-class MemberConverter(commands.MemberConverter):
-    async def convert(self, ctx, argument):
-        try:
-            return await super().convert(ctx, argument)
-        except commands.MemberNotFound:
-            # Maybe try users fuzzy search, but I feel like it will be slow with a lot of users on the server
-            return InvalidData(argument.split(' '))
-
-
 class DBRoleConverter(commands.RoleConverter):
     async def convert(self, ctx, argument):
         try:
@@ -130,6 +106,43 @@ class DiscordRoleConverter(commands.RoleConverter):
             raise commands.BadArgument(f"Role {result} is not in internal roles DB")
 
         return result
+
+
+@dataclass
+class RolesWithTarget:
+    roles: [discord.Role]
+    target: discord.Member
+
+
+class RolesWithTargetConverter(commands.Converter):
+    """
+    Converter that converts a line to RolesWithTarget object with roles
+    If every word in the line is a valid role, then message author will be a target
+    If conversion is failed, then exception from failed conversion will be raised
+    """
+
+    roles_converter = DiscordRoleConverter()
+    members_converter = commands.MemberConverter()
+
+    async def convert(self, ctx, message):
+        args = message.split(' ')
+        roles = []
+        target = None
+
+        for idx, arg in enumerate(args):
+            try:
+                roles.append(await self.roles_converter.convert(ctx, arg))
+            except commands.RoleNotFound as exception:
+                if idx == len(args) - 1 and idx > 0:
+                    # this is last argument and it can be a target
+                    try:
+                        target = await self.members_converter.convert(ctx, arg)
+                    except commands.MemberNotFound:
+                        raise commands.BadArgument(f"'{arg}' is not a valid role or user")
+                else:
+                    raise exception
+
+        return RolesWithTarget(roles, target or ctx.author)
 
 
 class RoleGroupStates:
@@ -341,58 +354,48 @@ class Roles(commands.Cog):
 
     @role.command(aliases=["join", "assign", ])
     @commands.guild_only()
-    async def add(self, ctx, roles: commands.Greedy[DiscordRoleConverter], *,
-                  member: MemberConverter = None):
+    async def add(self, ctx, *, roles_with_target: RolesWithTargetConverter):
         """Add (assign) specified role(s) to you or mentioned member"""
-        if not roles:
-            raise commands.BadArgument("No valid roles were given!")
 
-        if isinstance(member, InvalidData):
-            error_message = f"{member[0]} is not a valid role" if len(member) > 1 else \
-                f"{member[0]} is not a valid user or role"
-            raise commands.BadArgument(error_message)
+        roles = roles_with_target.roles
+        target = roles_with_target.target
 
-        if member is not None and not has_server_perms():
-            raise commands.MissingPermissions("Insufficient permissions for editing other users roles")
+        if target != ctx.author and not has_server_perms():
+            # MissingPermissions expects an array of permissions
+            raise commands.MissingPermissions(["Server Manager"])
 
         role_names = [role.name for role in roles]
         if "Bot manager" in role_names and not has_server_perms():
-            raise commands.MissingPermissions("Insufficient permissions to assign the bot management role")
-        member = member or ctx.author
-
+            raise commands.MissingPermissions(["Server Manager"])
+        
         # for group in set((await Role.get(name=role_name)).group for role_name in role_names):
         async for group in RoleGroup.filter(roles__name__in=role_names).distinct():
             if group.exclusive:
-                await self.remove_conflicting_roles(ctx, member, group)
+                await self.remove_conflicting_roles(ctx, target, group)
 
-        await member.add_roles(*roles)
+        await target.add_roles(*roles)
         await ctx.send(f"Added {'role' if len(roles) == 1 else 'roles'} "
                        f"{', '.join([role.mention for role in roles])} "
-                       f"to {member.mention}",
+                       f"to {target.mention}",
                        allowed_mentions=discord.AllowedMentions.none()
                        )
 
     @role.command(aliases=["leave", "clear", "delete", "yeet", ])
     @commands.guild_only()
-    async def remove(self, ctx, roles: commands.Greedy[DiscordRoleConverter],
-                     member: MemberConverter = None):
+    async def remove(self, ctx, *, roles_with_target: RolesWithTargetConverter):
         """Remove specified role(s) from you or mentioned member"""
-        if not roles:
-            raise commands.BadArgument("No valid roles were given!")
 
-        if isinstance(member, InvalidData):
-            error_message = f"{member[0]} is not a valid role" if len(member) > 1 else \
-                f"{member[0]} is not a valid user or role"
-            raise commands.BadArgument(error_message)
+        roles = roles_with_target.roles
+        target = roles_with_target.target
 
-        if member is not None and not has_server_perms():
-            raise commands.MissingPermissions("Insufficient permissions for editing other users roles")
+        if target != ctx.author and not has_server_perms():
+            # MissingPermissions expects an array of permissions
+            raise commands.MissingPermissions(["Server Manager"])
 
-        member = member or ctx.author
-        await member.remove_roles(*roles)
+        await target.remove_roles(*roles)
         mentions = [role.mention for role in roles]
         await ctx.send(f"Removed {'role' if len(roles) == 1 else 'roles'} "
-                       f"{', '.join(mentions)} from {member.mention}",
+                       f"{', '.join(mentions)} from {target.mention}",
                        allowed_mentions=discord.AllowedMentions.none()
                        )
 
@@ -455,7 +458,7 @@ class Roles(commands.Cog):
     async def archive(self, ctx, role: DBRoleConverter(), archive: typing.Optional[bool]=True):
         """Archives role to server network database, deletes it from discord servers"""
         if role.name == "Bot manager" and archive:
-            raise commands.MissingPermissions("I wont delete the bot management role lmao")
+            raise commands.MissingPermissions(["Striga"])
 
         role.archived = archive
         await role.save()
