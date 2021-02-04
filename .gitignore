@@ -1,5 +1,8 @@
 venv/
 migrations/
+emotes/
+reactions/
+
 *.ini
 *.log
 
