@@ -7,7 +7,7 @@ import tortoise
 from tortoise.models import Model
 from tortoise import fields
 from tortoise.functions import Max
-from tortoise.transactions import atomic, in_transaction
+from tortoise.transactions import atomic
 
 import asyncio
 import typing
@@ -15,7 +15,7 @@ import typing
 from cogs.cog_utils import fuzzy_search, has_server_perms, has_bot_perms
 from cogs.db_utils import reshuffle
 from cogs.param_coverter import ParamConverter, ColorValueConverter, \
-    convert_to_bool, convert_to_int, ensure_unique, convert_ensure_unique
+    convert_to_bool, convert_to_int, convert_ensure_unique
 
 
 logger = logging.getLogger(__name__)
@@ -75,7 +75,7 @@ class RoleGroupConverter(commands.Converter):
         return await RoleGroup.get(name=group_name)
 
 
-class InvalidData():
+class InvalidData:
     """Class-flag that signals, that we're failed to convert string to the valid user/role"""
 
     def __init__(self, data: [str]):
@@ -212,7 +212,8 @@ class Roles(commands.Cog):
         if len(member.roles) <= 1:
             role_text = "don't have any roles"
         else:
-            role_text = f"have following roles:  {', '.join([role.mention for role in member.roles[1:]])}"
+            mentions = [role.mention for role in member.roles[1:]]
+            role_text = f"have following roles:  {', '.join(mentions)}"
 
         await ctx.send(f"{mention} {role_text}. To view available roles, use !role list",
                        allowed_mentions=discord.AllowedMentions.none())
@@ -347,7 +348,8 @@ class Roles(commands.Cog):
             raise commands.BadArgument("No valid roles vere given!")
 
         if isinstance(member, InvalidData):
-            error_message = f"{member[0]} is not a valid role" if len(member) > 1 else f"{member[0]} is not a valid user or role"
+            error_message = f"{member[0]} is not a valid role" if len(member) > 1 else \
+                f"{member[0]} is not a valid user or role"
             raise commands.BadArgument(error_message)
 
         if member is not None and not has_server_perms():
@@ -379,7 +381,8 @@ class Roles(commands.Cog):
             raise commands.BadArgument("No valid roles vere given!")
 
         if isinstance(member, InvalidData):
-            error_message = f"{member[0]} is not a valid role" if len(member) > 1 else f"{member[0]} is not a valid user or role"
+            error_message = f"{member[0]} is not a valid role" if len(member) > 1 else \
+                f"{member[0]} is not a valid user or role"
             raise commands.BadArgument(error_message)
 
         if member is not None and not has_server_perms():
@@ -387,9 +390,9 @@ class Roles(commands.Cog):
 
         member = member or ctx.author
         await member.remove_roles(*roles)
+        mentions = [role.mention for role in roles]
         await ctx.send(f"Removed {'role' if len(roles) == 1 else 'roles'} "
-                       f"{', '.join([role.mention for role in roles])} "
-                       f"from {member.mention}",
+                       f"{', '.join(mentions)} from {member.mention}",
                        allowed_mentions=discord.AllowedMentions.none()
                        )
 

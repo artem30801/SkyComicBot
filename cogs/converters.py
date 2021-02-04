@@ -9,9 +9,11 @@ from discord.ext import commands
 
 logger = logging.getLogger(__name__)
 
+
 class TimezonedbException(Exception):
     """Exception class for all errors connected with TimezoneDB"""
     pass
+
 
 class Conversions(commands.Cog):
     """Timezone conversions (and maybe temperature later?)"""
@@ -23,19 +25,19 @@ class Conversions(commands.Cog):
             self.timedb_key = config["AUTH"]["timezonedb_key"]
         except KeyError:
             logger.warning("Can't read TimezoneDB API key!")
-    
+
     @commands.command(help="Converts time between timezones. Use '!help convert' for details",
-                description = "Use as '!convert time timezone_from timezone_to' "
-                "(for example '!convert 9:15 AM CST GMT+3')\n"
-                "Time supports both 12h and 24h formats\n"
-                "Use abbreviation or UTC offset to specify timezones.\n"
-                "Take into account that some timezones are sharing one abbreviation.")
+                      description="Use as '!convert time timezone_from timezone_to' "
+                                  "(for example '!convert 9:15 AM CST GMT+3')\n"
+                                  "Time supports both 12h and 24h formats\n"
+                                  "Use abbreviation or UTC offset to specify timezones.\n"
+                                  "Take into account that some timezones are sharing one abbreviation.")
     async def convert(self, ctx: commands.context.Context, *args):
         if self.timedb_key is None:
             logger.warning("Can't handle convert command, TimezoneDB key is missing")
             await ctx.send("Sorry, time conversion is unavailable now. Ping developers!")
             return
-        
+
         if len(args) < 3:
             await ctx.send("There should be at least 3 arguments for time conversion (time timezone_from timezone_to)")
             return
@@ -47,7 +49,7 @@ class Conversions(commands.Cog):
         if time is None:
             await ctx.send(f"Can't parse '{time_str}' time. Is it valid?")
             return
-        
+
         try:
             diff = self.timezones_diff(timezone_from, timezone_to)
         except TimezonedbException as exception:
@@ -55,9 +57,10 @@ class Conversions(commands.Cog):
             return
 
         if diff is None:
-            await ctx.send(f"Can't get time difference between '{timezone_from}' and '{timezone_to}'. Are they valid timezones?")
+            await ctx.send(
+                f"Can't get time difference between '{timezone_from}' and '{timezone_to}'. Are they valid timezones?")
             return
-        
+
         result_time = time + diff
 
         # set result as 12/24 hours time depending on request format
@@ -65,9 +68,9 @@ class Conversions(commands.Cog):
             result_time = f'{result_time:%I:%M %p}'
         else:
             result_time = f'{result_time:%H:%M}'
-        
+
         await ctx.send(f'{result_time} (from {timezone_from} to {timezone_to})')
-    
+
     @staticmethod
     def strtime_to_datetime(time: str):
         """
@@ -80,7 +83,7 @@ class Conversions(commands.Cog):
         before_hours, hours, leftover = Conversions.split_on_first_numbers(time.upper())
         if hours is None:
             return None, None
-        
+
         time_format = before_hours + "%H"
         is_using_12_hours = False
 
@@ -121,7 +124,6 @@ class Conversions(commands.Cog):
         result = datetime.utcnow().replace(hour=result.hour, minute=result.minute)
         return result, is_using_12_hours
 
-    
     @staticmethod
     def split_on_first_numbers(string: str):
         """
@@ -131,7 +133,7 @@ class Conversions(commands.Cog):
         numbers_start = re.search(r'\d', string)
         if numbers_start is None:
             return string, None, None
-        
+
         before_numbers = string[:numbers_start.start()]
 
         numbers_end = re.search(r'\d\D', string)
@@ -142,7 +144,6 @@ class Conversions(commands.Cog):
         numbers = string[numbers_start.start():numbers_end.start() + 1]
         after_numbers = string[numbers_end.start() + 1:]
         return before_numbers, numbers, after_numbers
-
 
     def timezones_diff(self, timezone_from: str, timezone_to: str):
         """
@@ -169,9 +170,8 @@ class Conversions(commands.Cog):
         if diff is not None:
             diff = diff + to_shift - from_shift
             diff = timedelta(seconds=diff)
-        
-        return diff
 
+        return diff
 
     @staticmethod
     def split_timezone_and_shift(timezone: str):
@@ -191,10 +191,10 @@ class Conversions(commands.Cog):
         elif '−' in timezone:
             separator = '−'
             offset_is_positive = False
-        
+
         if separator is None:
             return timezone, 0
-        
+
         [timezone, offset] = timezone.split(separator)
         offset, _ = Conversions.strtime_to_datetime(offset)
         if offset is None:
@@ -205,9 +205,8 @@ class Conversions(commands.Cog):
             offset = offset.seconds
         else:
             offset = -offset.seconds
-        
-        return timezone, offset
 
+        return timezone, offset
 
     def get_diff_from_timezonedb(self, timezone_from: str, timezone_to: str):
         """
@@ -229,10 +228,10 @@ class Conversions(commands.Cog):
 
         if not diff_request.ok:
             logger.error(f"Got error {diff_request.status_code}: {diff_request.reason} while processing request!\n" +
-            f"Request is '{diff_request.url}'\n" +
-            f"Response is '{diff_request.text}'")
+                         f"Request is '{diff_request.url}'\n" +
+                         f"Response is '{diff_request.text}'")
             raise TimezonedbException()
-        
+
         result = diff_request.json()
         if result["status"] != "OK":
             message = result["message"]
