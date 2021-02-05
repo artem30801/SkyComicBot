@@ -9,7 +9,8 @@ import glob
 import typing
 import itertools
 
-from cogs.cog_utils import fuzzy_search, abs_join, send_file, has_bot_perms
+from cogs.cog_utils import fuzzy_search, abs_join, send_file
+from cogs.permissions import has_server_perms, has_bot_perms
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,7 @@ image_exts = (".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff")
 
 class EmoteConverter(commands.Converter):
     async def convert(self, ctx, argument):
-        key = fuzzy_search(argument, ctx.cog.emotes.keys())
+        key = fuzzy_search(argument, ctx.cog.emotes.keys(), score_cutoff=30)
         if key is None:
             raise commands.BadArgument(f"Sorry, I cant find emote **{argument}**. "
                                        f"Try *!emote list* command to see available emotes")

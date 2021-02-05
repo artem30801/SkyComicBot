@@ -11,6 +11,7 @@ import discord
 from discord.ext import commands
 
 from cogs.errors import Errors
+from cogs.permissions import Permissions
 from cogs.greetings import Greetings
 from cogs.reactions import Reactions
 from cogs.roles import Roles
@@ -22,7 +23,7 @@ nest_asyncio.apply()
 
 bot = commands.Bot(command_prefix=commands.when_mentioned_or("!", "$"), case_insensitive=True,
                    intents=discord.Intents.all())
-# https://discordapp.com/oauth2/authorize?&client_id=804306819660644372&scope=bot&permissions=1446509632
+    # https://discordapp.com/oauth2/authorize?&client_id=804306819660644372&scope=bot&permissions=1446509632
 
 
 async def main():
@@ -30,6 +31,7 @@ async def main():
     config.read("config.ini")
 
     bot.add_cog(Errors(bot))
+    bot.add_cog(Permissions(bot))
     bot.add_cog(Greetings(bot))
     bot.add_cog(Reactions(bot))
     bot.add_cog(Roles(bot))
@@ -38,7 +40,8 @@ async def main():
 
     try:
         #db_url="sqlite://skybot.db"
-        await Tortoise.init(db_url=config["AUTH"]["db_url"], modules={"models": ["cogs.roles"]})
+        await Tortoise.init(db_url=config["AUTH"]["db_url"],
+                            modules={"models": ["cogs.roles", "cogs.permissions"]})
         await Tortoise.generate_schemas()
         await bot.start(config["AUTH"]["discord_token"])  # 1446509632
     finally:

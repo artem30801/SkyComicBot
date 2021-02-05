@@ -12,7 +12,8 @@ from tortoise.transactions import atomic
 import asyncio
 import typing
 
-from cogs.cog_utils import fuzzy_search, has_server_perms, has_bot_perms
+from cogs.permissions import has_server_perms, has_bot_perms
+from cogs.cog_utils import fuzzy_search
 from cogs.db_utils import reshuffle
 from cogs.param_coverter import ParamConverter, ColorValueConverter, \
     convert_to_bool, convert_to_int, convert_ensure_unique
@@ -335,7 +336,7 @@ class Roles(commands.Cog):
 
         old_name = group.name
         group = group.update_from_dict(converted)
-        await group.save(update_fields=converted.keys())
+        await group.save()
         await ctx.send(f"Updated role group **{old_name}** with new parameters: "
                        f"*{', '.join([f'{key}={value}' for key, value in converted_msg.items()])}*")
 
@@ -428,7 +429,7 @@ class Roles(commands.Cog):
         Use quotation for space-separated names\strings
         """
         converter = ParamConverter({"name": convert_ensure_unique(Role),
-                                    "color": ColorValueConverter(), "group": DBRoleConverter(),
+                                    "color": ColorValueConverter(), "group": RoleGroupConverter(),
                                     "priority": convert_to_int, "archived": convert_to_bool})
         converted = await converter.convert(ctx, params)
         converted_msg = converted.copy()
@@ -440,7 +441,7 @@ class Roles(commands.Cog):
 
         old_name = role.name
         role = role.update_from_dict(converted)
-        await role.save(update_fields=converted.keys())
+        await role.save()
 
         if "name" in converted:
             await self.rename_guilds_roles(old_name, role.name)
@@ -471,13 +472,18 @@ class Roles(commands.Cog):
             raise commands.CheckFailure("Sorry, but this command is unavailable as there is no **Sider** role group.")
 
         member = ctx.author
+
         no_options = ["leave", "clear", "delete", "remove", "yeet", "no", "none", "noside", "nosider", "human"]
-        if fuzzy_search(role_arg, no_options) is not None:
+        options = await Role.filter(group=group, archived=False).values_list("name", flat=True)
+        options.extend(no_options)
+        pick = fuzzy_search(role_arg, options)
+
+        if pick in no_options:
             await self.remove_conflicting_roles(ctx, member, group)
             await ctx.send("You're a *noside* now! Is that what you wanted?")
             return
 
-        db_role = await DBRoleConverter().convert(ctx, role_arg)
+        db_role = await DBRoleConverter().convert(ctx, pick)
         if (await db_role.group).pk != group.pk:
             raise commands.CheckFailure("Sorry, but this is not **Sider** role.")
 
