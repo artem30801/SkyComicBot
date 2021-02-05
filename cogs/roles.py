@@ -353,6 +353,11 @@ class Roles(commands.Cog):
         await ctx.send(f"Updated role group **{old_name}** with new parameters: "
                        f"*{', '.join([f'{key}={value}' for key, value in converted_msg.items()])}*")
 
+    @role_group.command(name="archive", )
+    @has_bot_perms()
+    async def archive_group(self, ctx, group: RoleGroupConverter(), archive: typing.Optional[bool]=True):
+        await self.edit_group(ctx, group, params=f"archived={archive}")
+
     @role.command(aliases=["join", "assign", ])
     @commands.guild_only()
     async def add(self, ctx, *, roles_with_target: RolesWithTargetConverter):
