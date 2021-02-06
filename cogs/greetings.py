@@ -55,10 +55,10 @@ class Greetings(commands.Cog):
         self._started_at = datetime.now()
 
         for guild in self.bot.guilds:
-            home_channel = await self.get_home_channel(guild)
+            home_channel, exists_in_db = await self.get_home_channel(guild)
 
-            # try to set a system channel as a home
-            if home_channel is None:
+            # try to set a system channel as a home, if entry not exists
+            if not exists_in_db:
                 home_channel = guild.system_channel
                 if not utils.can_bot_respond(self.bot, home_channel):
                     logger.warning(f"Bot can't send messages to system channel #{home_channel.name} at '{guild.name}'")
@@ -75,9 +75,10 @@ class Greetings(commands.Cog):
     @staticmethod
     async def set_home_channel(guild: discord.Guild, channel: discord.TextChannel):
         """Sets bots home channel for the server"""
-        home_channel, was_created = await HomeChannels.get_or_create(guild_id=guild.id, defaults={"home_channel_id": channel.id})
+        channel_id = channel.id if channel is not None else 0
+        home_channel, was_created = await HomeChannels.get_or_create(guild_id=guild.id, defaults={"home_channel_id": channel_id})
         if not was_created:
-            home_channel.home_channel_id = channel.id
+            home_channel.home_channel_id = channel_id
             await home_channel.save()
 
 
@@ -85,9 +86,11 @@ class Greetings(commands.Cog):
     async def get_home_channel(guild: discord.Guild):
         home_channel = await HomeChannels.get_or_none(guild_id=guild.id)
         if home_channel:
-            return guild.get_channel(home_channel.home_channel_id)
+            if home_channel.home_channel_id == 0:
+                return None, True
+            return guild.get_channel(home_channel.home_channel_id), True
         
-        return None
+        return None, False
 
     def get_greeting(self, member):
         greetings = \
@@ -125,12 +128,12 @@ class Greetings(commands.Cog):
         member = member or ctx.author
         await ctx.send(self.get_greeting(member))
 
-    @commands.command(aliases=["bind"])
+    @commands.group(aliases=["bind"], case_insensitive=True, invoke_without_command=True)
     @commands.guild_only()
     @utils.has_bot_perms()
     async def home(self, ctx):
         """Sets this channel as a home channel for the bot"""
-        current_home = await self.get_home_channel(ctx.guild)
+        current_home, _ = await self.get_home_channel(ctx.guild)
         new_home = ctx.channel
 
         if current_home == new_home:
@@ -148,7 +151,26 @@ class Greetings(commands.Cog):
             await current_home.send(old_home_response)
 
         if utils.can_bot_respond(ctx.bot, new_home):
-            await new_home.send("From now I'm living here!")
+            await new_home.send("From now I'm living here, yay!")
+
+    @home.command(name="evict", aliases=["none", "clear", "yeet"])
+    @commands.guild_only()
+    @utils.has_bot_perms()
+    async def remove_home(self, ctx):
+        "Removes home channel for the bot"
+        old_home, _ = await self.get_home_channel(ctx.guild)
+
+        if old_home is None:
+            await ctx.send("I'm already homeless T_T")
+            return
+
+        await self.set_home_channel(ctx.guild, None)
+
+        if utils.can_bot_respond(ctx.bot, old_home):
+            await old_home.send("Moved away in the search of a better home")
+
+        await ctx.send("I'm homeless now >_<")        
+
 
     @commands.command()
     async def uptime(self, ctx):
