@@ -1,4 +1,5 @@
 import logging
+import shlex
 from dataclasses import dataclass
 
 import discord
@@ -125,7 +126,7 @@ class RolesWithTargetConverter(commands.Converter):
     members_converter = commands.MemberConverter()
 
     async def convert(self, ctx, message):
-        args = message.split(' ')
+        args = shlex.split(message)
         roles = []
         target = None
 
