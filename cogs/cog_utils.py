@@ -51,6 +51,16 @@ def has_bot_perms():  # perms to manage bot internal DB
     return commands.check_any(commands.is_owner())
 
 
+def can_bot_respond(bot: discord.ext.commands.Bot, channel: discord.TextChannel):
+    """Checks, can a bot send messages to this channel"""
+    if bot is None or channel is None:
+        return False
+
+    bot_as_member = channel.guild.get_member(bot.user.id)
+    permissions = channel.permissions_for(bot_as_member)
+    return permissions.send_messages
+
+
 if __name__ == "__main__":
     l = ["help", "me", "please", "zalside"]
     print(fuzzy_search("pls", l))

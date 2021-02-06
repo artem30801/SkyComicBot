@@ -1,12 +1,17 @@
 import logging
+import math
+import random
+from datetime import datetime
+from dateutil import relativedelta
 
 import discord
 from discord.ext import commands
 
-import random
-import math
-from datetime import datetime
-from dateutil import relativedelta
+import tortoise
+from tortoise import fields
+from tortoise.models import Model
+
+import cogs.cog_utils as utils
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +24,11 @@ def display_delta(delta):
          "second": delta.seconds,
          }
     return ", ".join([f"{value} {key+'s' if value > 1  else key}" for key, value in d.items() if value > 0])
+
+
+class HomeChannels(Model):
+    guild_id = fields.BigIntField()
+    home_channel_id = fields.BigIntField()
 
 
 class Greetings(commands.Cog):
@@ -45,12 +55,39 @@ class Greetings(commands.Cog):
         self._started_at = datetime.now()
 
         for guild in self.bot.guilds:
-            channel = guild.system_channel
-            if channel is not None:
-                try:
-                    await channel.send("Hello hello! I'm back online and ready to work!")
-                except discord.errors.Forbidden:
-                    logger.warning(f"Can't send startup message to #{channel.name} at '{guild.name}'")
+            home_channel = await self.get_home_channel(guild)
+
+            # try to set a system channel as a home
+            if home_channel is None:
+                home_channel = guild.system_channel
+                if not utils.can_bot_respond(self.bot, home_channel):
+                    logger.warning(f"Bot can't send messages to system channel #{home_channel.name} at '{guild.name}'")
+                    continue
+
+                await self.set_home_channel(guild, home_channel)
+
+            if utils.can_bot_respond(self.bot, home_channel):
+                await home_channel.send("Hello hello! I'm back online and ready to work!")
+            elif home_channel is not None:
+                logger.warning(f"Bot can't send messages to home channel #{home_channel.name} at '{guild.name}'")
+
+
+    @staticmethod
+    async def set_home_channel(guild: discord.Guild, channel: discord.TextChannel):
+        """Sets bots home channel for the server"""
+        home_channel, was_created = await HomeChannels.get_or_create(guild_id=guild.id, defaults={"home_channel_id": channel.id})
+        if not was_created:
+            home_channel.home_channel_id = channel.id
+            await home_channel.save()
+
+
+    @staticmethod
+    async def get_home_channel(guild: discord.Guild):
+        home_channel = await HomeChannels.get_or_none(guild_id=guild.id)
+        if home_channel:
+            return guild.get_channel(home_channel.home_channel_id)
+        
+        return None
 
     def get_greeting(self, member):
         greetings = \
@@ -87,6 +124,31 @@ class Greetings(commands.Cog):
         """Says hello to you or mentioned member."""
         member = member or ctx.author
         await ctx.send(self.get_greeting(member))
+
+    @commands.command(aliases=["bind"])
+    @commands.guild_only()
+    @utils.has_bot_perms()
+    async def home(self, ctx):
+        """Sets this channel as a home channel for the bot"""
+        current_home = await self.get_home_channel(ctx.guild)
+        new_home = ctx.channel
+
+        if current_home == new_home:
+            if utils.can_bot_respond(ctx.bot, current_home):
+                await ctx.send("I'm already living here, but hey, thanks for the invitation!")
+            return
+
+        await self.set_home_channel(ctx.guild, ctx.channel)
+
+        if utils.can_bot_respond(ctx.bot, current_home):
+            old_home_response = f"Moving to the {new_home.mention}."
+            if not utils.can_bot_respond(ctx.bot, new_home):
+                old_home_response += " You know I'm muted there, right? -_-"
+
+            await current_home.send(old_home_response)
+
+        if utils.can_bot_respond(ctx.bot, new_home):
+            await new_home.send("From now I'm living here!")
 
     @commands.command()
     async def uptime(self, ctx):
