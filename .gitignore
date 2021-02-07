@@ -2,6 +2,7 @@ venv/
 migrations/
 emotes/
 reactions/
+last_startup
 
 *.ini
 *.log

@@ -1,8 +1,10 @@
 import logging
 import math
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 from dateutil import relativedelta
+from os.path import isfile
+from typing import Optional
 
 import discord
 from discord.ext import commands
@@ -34,6 +36,9 @@ class HomeChannels(Model):
 class Greetings(commands.Cog):
     """Simple greetings and welcome commands"""
 
+    startup_file_name = "last_startup"
+    startup_time_format = "%H:%M %d.%m.%Y"
+
     def __init__(self, bot):
         self.bot = bot
         self._last_greeted_member = None
@@ -54,6 +59,15 @@ class Greetings(commands.Cog):
 
         self._started_at = datetime.now()
 
+        prev_start = self.get_last_startup_time()
+        self.update_last_startup_time()
+
+        # Don't send greetings if last startup was less than a 3 hours ago
+        if prev_start is not None:
+            diff = self._started_at - prev_start
+            if diff < timedelta(hours=3):
+                return
+
         for guild in self.bot.guilds:
             home_channel, exists_in_db = await self.get_home_channel(guild)
 
@@ -69,8 +83,23 @@ class Greetings(commands.Cog):
             if utils.can_bot_respond(self.bot, home_channel):
                 await home_channel.send("Hello hello! I'm back online and ready to work!")
             elif home_channel is not None:
-                logger.warning(f"Bot can't send messages to home channel #{home_channel.name} at '{guild.name}'")
+                logger.warning(f"Bot can't send messages to home channel #{home_channel.name} at '{guild.name}'")   
 
+    @classmethod
+    def get_last_startup_time(cls) -> Optional[datetime]:
+        if not isfile(cls.startup_file_name):
+            return None
+        
+        with open(cls.startup_file_name, 'r') as startup_time_file:
+            try:
+                return datetime.strptime(startup_time_file.read(), cls.startup_time_format)
+            except ValueError:
+                return None
+
+    def update_last_startup_time(self):
+        """writes to the startup file current _started_at file"""
+        with open(self.startup_file_name, 'w') as startup_time_file:
+            startup_time_file.write(self._started_at.strftime(self.startup_time_format))
 
     @staticmethod
     async def set_home_channel(guild: discord.Guild, channel: discord.TextChannel):
