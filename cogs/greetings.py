@@ -54,6 +54,77 @@ class Greetings(commands.Cog):
         guilds_list = [f"[{g.name}: {g.member_count} members]" for g in self.bot.guilds]
         logger.info(f"Connected. Current servers: {', '.join(guilds_list)}")
 
+    @commands.Cog.listener()
+    async def on_member_join(self, member):
+        channel = member.guild.system_channel
+        if channel is not None:
+            await channel.send(f"{self.get_greeting(member)} Welcome!")
+
+    @commands.command(aliases=["hi", ])
+    async def hello(self, ctx, *, member: discord.Member = None):
+        """Says hello to you or mentioned member."""
+        member = member or ctx.author
+        await ctx.send(self.get_greeting(member))
+
+    @commands.group(aliases=["bind"], case_insensitive=True, invoke_without_command=True)
+    @commands.guild_only()
+    @utils.has_bot_perms()
+    async def home(self, ctx):
+        """Sets this channel as a home channel for the bot"""
+        current_home, _ = await self.get_home_channel(ctx.guild)
+        new_home = ctx.channel
+
+        if current_home == new_home:
+            if utils.can_bot_respond(ctx.bot, current_home):
+                await ctx.send("I'm already living here, but hey, thanks for the invitation!")
+            return
+
+        await self.set_home_channel(ctx.guild, ctx.channel)
+
+        if utils.can_bot_respond(ctx.bot, current_home):
+            old_home_response = f"Moving to the {new_home.mention}."
+            if not utils.can_bot_respond(ctx.bot, new_home):
+                old_home_response += " You know I'm muted there, right? -_-"
+
+            await current_home.send(old_home_response)
+
+        if utils.can_bot_respond(ctx.bot, new_home):
+            await new_home.send("From now I'm living here, yay!")
+
+    @home.command(name="evict", aliases=["none", "clear", "yeet"])
+    @commands.guild_only()
+    @utils.has_bot_perms()
+    async def remove_home(self, ctx):
+        "Removes home channel for the bot"
+        old_home, _ = await self.get_home_channel(ctx.guild)
+
+        if old_home is None:
+            await ctx.send("I'm already homeless T_T")
+            return
+
+        await self.set_home_channel(ctx.guild, None)
+
+        if utils.can_bot_respond(ctx.bot, old_home):
+            await old_home.send("Moved away in the search of a better home")
+
+        await ctx.send("I'm homeless now >_<")        
+
+    @commands.command()
+    async def uptime(self, ctx):
+        """Shows how long the bot was running for."""
+        now = datetime.now()
+        delta = relativedelta.relativedelta(now, self._started_at)
+        await ctx.send(f"I was up and running since {self._started_at.strftime('%d/%m/%Y, %H:%M:%S')} "
+                       f"for {display_delta(delta)}")
+
+    @commands.command()
+    async def latency(self, ctx):
+        """
+        Shows latency between bot and Discord servers.
+        Use to check if there are problems with Discord API or bot network.
+        """
+        await ctx.send(f"Current latency: {math.ceil(self.bot.latency*100)} ms")
+
     async def on_first_ready(self):
         logger.info(f"Logged in as {self.bot.user}")
 
@@ -110,7 +181,6 @@ class Greetings(commands.Cog):
             home_channel.home_channel_id = channel_id
             await home_channel.save()
 
-
     @staticmethod
     async def get_home_channel(guild: discord.Guild):
         home_channel = await HomeChannels.get_or_none(guild_id=guild.id)
@@ -144,77 +214,3 @@ class Greetings(commands.Cog):
 
         self._last_greeted_member = member
         return message
-
-    @commands.Cog.listener()
-    async def on_member_join(self, member):
-        channel = member.guild.system_channel
-        if channel is not None:
-            await channel.send(f"{self.get_greeting(member)} Welcome!")
-
-    @commands.command(aliases=["hi", ])
-    async def hello(self, ctx, *, member: discord.Member = None):
-        """Says hello to you or mentioned member."""
-        member = member or ctx.author
-        await ctx.send(self.get_greeting(member))
-
-    @commands.group(aliases=["bind"], case_insensitive=True, invoke_without_command=True)
-    @commands.guild_only()
-    @utils.has_bot_perms()
-    async def home(self, ctx):
-        """Sets this channel as a home channel for the bot"""
-        current_home, _ = await self.get_home_channel(ctx.guild)
-        new_home = ctx.channel
-
-        if current_home == new_home:
-            if utils.can_bot_respond(ctx.bot, current_home):
-                await ctx.send("I'm already living here, but hey, thanks for the invitation!")
-            return
-
-        await self.set_home_channel(ctx.guild, ctx.channel)
-
-        if utils.can_bot_respond(ctx.bot, current_home):
-            old_home_response = f"Moving to the {new_home.mention}."
-            if not utils.can_bot_respond(ctx.bot, new_home):
-                old_home_response += " You know I'm muted there, right? -_-"
-
-            await current_home.send(old_home_response)
-
-        if utils.can_bot_respond(ctx.bot, new_home):
-            await new_home.send("From now I'm living here, yay!")
-
-    @home.command(name="evict", aliases=["none", "clear", "yeet"])
-    @commands.guild_only()
-    @utils.has_bot_perms()
-    async def remove_home(self, ctx):
-        "Removes home channel for the bot"
-        old_home, _ = await self.get_home_channel(ctx.guild)
-
-        if old_home is None:
-            await ctx.send("I'm already homeless T_T")
-            return
-
-        await self.set_home_channel(ctx.guild, None)
-
-        if utils.can_bot_respond(ctx.bot, old_home):
-            await old_home.send("Moved away in the search of a better home")
-
-        await ctx.send("I'm homeless now >_<")        
-
-
-    @commands.command()
-    async def uptime(self, ctx):
-        """Shows how long the bot was running for."""
-        now = datetime.now()
-        delta = relativedelta.relativedelta(now, self._started_at)
-        await ctx.send(f"I was up and running since {self._started_at.strftime('%d/%m/%Y, %H:%M:%S')} "
-                       f"for {display_delta(delta)}")
-
-    @commands.command()
-    async def latency(self, ctx):
-        """
-        Shows latency between bot and Discord servers.
-        Use to check if there are problems with Discord API or bot network.
-        """
-        await ctx.send(f"Current latency: {math.ceil(self.bot.latency*100)} ms")
-
-
