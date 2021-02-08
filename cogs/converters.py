@@ -43,55 +43,50 @@ class Conversions(commands.Cog):
                                   "Use abbreviation or UTC offset to specify timezones.\n"
                                   "Take into account that some timezones are sharing one abbreviation.")
     async def convert(self, ctx: commands.context.Context, *args):
-        try:
-            if len(args) < 3:
-                await ctx.send("There should be at least 3 arguments for time conversion (time timezone_from timezone_to)")
-                return
+        if len(args) < 3:
+            await ctx.send("There should be at least 3 arguments for time conversion (time timezone_from timezone_to)")
+            return
 
-            # TODO: This command will use 3 calls to the Timezones DB when timezone validator will be ready
-            # Don't validate timezones on conversion?
-            # We can use only two calls, if we will try to get a diff from GMT
-            # Possible API is diff_from_UTC, arg_is_member = await get_diff_from_utc(ctx, arg)
-            # Also, validate time before timezones
-            timezone_to, was_member = await self.extract_timezone(ctx, args[-1])
-            if timezone_to is None:
-                if was_member:
-                    await ctx.send(f"Looks like {args[-1]} did't set the timezone!")
-                    return
-                else:
-                    await ctx.send(f"Looks like {args[-1]} is not a valid timezone!")
-                    return
-        
-            timezone_from, was_member = await self.extract_timezone(ctx, args[-2])
-            if timezone_from is None:
-                if was_member:
+        time_str = ' '.join(args[0:-2])
+        time, should_use_12_hours = Conversions.strtime_to_datetime(time_str)
+        if time is None:
+            await ctx.send(f"Can't parse '{time_str}' time. Is it valid?")
+            return
+
+        try:
+            tz_from_utc_diff, is_member = await self.get_diff_from_utc(ctx, args[-2])
+            if tz_from_utc_diff is None:
+                if is_member:
                     await ctx.send(f"Looks like {args[-2]} did't set the timezone!")
                     return
                 else:
                     await ctx.send(f"Looks like {args[-2]} is not a valid timezone!")
                     return
-            
-            time_str = ' '.join(args[0:-2])
-            time, should_use_12_hours = Conversions.strtime_to_datetime(time_str)
-            if time is None:
-                await ctx.send(f"Can't parse '{time_str}' time. Is it valid?")
-                return
 
-                diff = self.timezones_diff(timezone_from, timezone_to)
-
-            result_time = time + diff
-
-            # set result as 12/24 hours time depending on request format
-            if should_use_12_hours:
-                result_time = f'{result_time:%I:%M %p}'
-            else:
-                result_time = f'{result_time:%H:%M}'
-
-            await ctx.send(f'{result_time} (from {timezone_from} to {timezone_to})')
-
+            tz_to_utc_diff, is_member = await self.get_diff_from_utc(ctx, args[-1])
+            if tz_to_utc_diff is None:
+                if is_member:
+                    await ctx.send(f"Looks like {args[-1]} did't set the timezone!")
+                    return
+                else:
+                    await ctx.send(f"Looks like {args[-1]} is not a valid timezone!")
+                    return
         except TimezonedbException as exception:
             await ctx.send("Sorry, timezones functionality is unavailable now =( Ping developers!")
             return
+
+        result_time = time - tz_from_utc_diff + tz_to_utc_diff
+
+        # set result as 12/24 hours time depending on request format
+        if should_use_12_hours:
+            result_time = f'{result_time:%I:%M %p}'
+        else:
+            result_time = f'{result_time:%H:%M}'
+
+        from_tz = self.timedelta_to_utc_str(tz_from_utc_diff)
+        to_tz = self.timedelta_to_utc_str(tz_to_utc_diff)
+
+        await ctx.send(f'{result_time} (from {from_tz} to {to_tz})')
 
     @commands.group(aliases=["tz"], case_insensitive=True, invoke_without_command=True)
     async def timezone(self, ctx: commands.context.Context, member: discord.Member = None):
@@ -114,11 +109,14 @@ class Conversions(commands.Cog):
         """Sets your timezone to the one you stated"""
         timezone = timezone.upper()
         try:
-            if self.does_timezone_exists(timezone):
-                await self.set_timezone_for_member(ctx.author, timezone)
-                await ctx.send(f"Your timezone is set to '{timezone}'")
-            else:
+            diff, _ = await self.get_diff_from_utc(ctx, timezone)
+            if diff is None:
                 await ctx.send(f"Sorry, looks like timezone '{timezone}' is not exists in the DB")
+                return
+            
+            await self.set_timezone_for_member(ctx.author, timezone)
+            await ctx.send(f"Your timezone is set to '{timezone}' ({self.timedelta_to_utc_str(diff)})")
+
         except TimezonedbException:
             await ctx.send(f"Sorry, timezones functionality is unavailable now =( Ping developers!")
     
@@ -129,23 +127,6 @@ class Conversions(commands.Cog):
             await ctx.send("Your timezone was removed!")
         else:
             await ctx.send("You have no timezone to remove")
-
-    async def extract_timezone(self, ctx: commands.context.Context, arg: str) -> (Optional[str], bool):
-        """
-        Tries to get timezone from arg, where arg can be timezone or member
-        Returns valid timezone or None as a first argument and was this a member or timezone as second
-        """        
-        try:
-            member = await commands.MemberConverter().convert(ctx, arg)
-            timezone = await self.get_timezone_for_member(member)
-            return timezone, True
-        except commands.MemberNotFound:
-            arg = arg.upper()
-            if self.does_timezone_exists(arg):
-                return arg, False
-            else:
-                return None, False
-
 
     @staticmethod
     def strtime_to_datetime(time: str):
@@ -221,13 +202,40 @@ class Conversions(commands.Cog):
         after_numbers = string[numbers_end.start() + 1:]
         return before_numbers, numbers, after_numbers
 
+    @staticmethod
+    def timedelta_to_utc_str(delta: timedelta) -> str:
+        """converts timedelta to the string like 'UTC+delta'"""
+        hours, seconds = divmod(delta.total_seconds(), 3600)
+        minutes, _ = divmod(seconds, 60)
+        return f"UTC{int(hours):+}" + (f":{int(minutes)}" if minutes != 0 else "")
+
+    async def get_diff_from_utc(self, ctx: commands.context.Context, timezone_or_member: str) -> (Optional[timedelta], bool):
+        """
+        Returns difference between stated timezone and UTC+0 as timedelta, and was the first argument a member or not
+        If timezone is a member, will try to get a timezone from DB for this member
+        If timezone is invalid or member don't have a timezone set, result will be None, bool
+        Can raise TimezonedbException in case of errors with TimezoneDB
+        """
+        try:
+            member = await commands.MemberConverter().convert(ctx, timezone_or_member)
+            timezone = await self.get_timezone_for_member(member)
+            if timezone is None:
+                return None, True
+
+            is_arg_member = True
+        except commands.MemberNotFound:
+            timezone = timezone_or_member.upper()
+            is_arg_member = False
+        
+        diff = self.timezones_diff("UTC", timezone)
+        return diff, is_arg_member
+
     def timezones_diff(self, timezone_from: str, timezone_to: str):
         """
         Returns difference between timezones as timedelta, if timezones are valid, and None if not
         timezone_from and timezone_to should be timezone abbreviations
         Can raise TimezonedbException in case of errors with TimezoneDB
         """
-
         # TimezoneDB not supports shifts properly, so they are handled manually
         timezone_from, from_shift = self.split_timezone_and_shift(timezone_from)
         if timezone_from is None:
@@ -320,10 +328,6 @@ class Conversions(commands.Cog):
             raise TimezonedbException()
 
         return int(result["offset"])
-
-    def does_timezone_exists(self, timezone: str) -> bool:
-        # TODO: do
-        return True
 
     @staticmethod
     async def set_timezone_for_member(member: discord.Member, timezone: str):
