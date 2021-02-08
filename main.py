@@ -38,7 +38,7 @@ async def main():
 
     try:
         #db_url="sqlite://skybot.db"
-        await Tortoise.init(db_url=config["AUTH"]["db_url"], modules={"models": ["cogs.roles"]})
+        await Tortoise.init(db_url=config["AUTH"]["db_url"], modules={"models": ["cogs.roles", "cogs.greetings", "cogs.converters"]})
         await Tortoise.generate_schemas()
         await bot.start(config["AUTH"]["discord_token"])  # 1446509632
     finally:
