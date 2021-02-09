@@ -88,16 +88,28 @@ class Conversions(commands.Cog):
             from_tz_shift = self.timedelta_to_utc_str(tz_from_utc_diff)
             to_tz_shift = self.timedelta_to_utc_str(tz_to_utc_diff)
 
-            embed_result = discord.Embed()
-            embed_result.title = result_time
+            embed_result = discord.Embed(title=result_time)
             embed_result.add_field(name="From", value=f"{from_tz_name} ({from_tz_shift})")
             embed_result.add_field(name="To", value=f"{to_tz_name} ({to_tz_shift})")
 
             await ctx.send(embed=embed_result)
 
+    @commands.command()
+    async def now(self, ctx: commands.context.Context, timezone: str):
+        """Shows current time in the other timezone or for the other member"""
+        with ctx.typing():
+            tz_utc_diff, tz_name, _ = await self.get_diff_from_utc(ctx, timezone)
+            result_time = datetime.utcnow() + tz_utc_diff
+            tz_shift = self.timedelta_to_utc_str(tz_utc_diff)
+            
+            embed_result = discord.Embed(title=f'{result_time:%I:%M %p}')
+            embed_result.add_field(name="Timezone", value=f"{tz_name} ({tz_shift})")
+
+            await ctx.send(embed=embed_result)
+
     @commands.group(aliases=["tz"], case_insensitive=True, invoke_without_command=True)
     async def timezone(self, ctx: commands.context.Context, member: discord.Member = None):
-        """Shows the timezone of the member or yours, when called without parameters"""
+        """Shows the timezone of the member or yours by default"""
         member_timezone = await self.get_timezone_for_member(member if member else ctx.author)
 
         no_mentions = discord.AllowedMentions.none()
