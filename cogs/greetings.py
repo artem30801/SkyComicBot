@@ -69,17 +69,18 @@ class Greetings(commands.Cog):
     @commands.group(aliases=["bind"], case_insensitive=True, invoke_without_command=True)
     @commands.guild_only()
     @utils.has_bot_perms()
-    async def home(self, ctx):
-        """Sets this channel as a home channel for the bot"""
+    async def home(self, ctx, new_home: discord.TextChannel = None):
+        """Sets stated channel (or this one by default) as a home channel for the bot"""
         current_home, _ = await self.get_home_channel(ctx.guild)
-        new_home = ctx.channel
+        if new_home is None:
+            new_home = ctx.channel
 
         if current_home == new_home:
             if utils.can_bot_respond(ctx.bot, current_home):
-                await ctx.send("I'm already living here, but hey, thanks for the invitation!")
+                await ctx.send(f"I'm already living at {new_home.mention}, but hey, thanks for the invitation!")
             return
 
-        await self.set_home_channel(ctx.guild, ctx.channel)
+        await self.set_home_channel(ctx.guild, new_home)
 
         if utils.can_bot_respond(ctx.bot, current_home):
             old_home_response = f"Moving to the {new_home.mention}."
