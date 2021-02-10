@@ -58,7 +58,10 @@ class Emotes(commands.Cog):
     @emote.command(aliases=["all", "available", "view", ])
     async def list(self, ctx):
         """Shows list of available emotes."""
-        await ctx.send("Available emotes: \n" + "\n".join([f"**{emote}**" for emote in self.emotes.keys()]))
+        if len(self.emotes) > 0:
+            await ctx.send("Available emotes: \n" + "\n".join([f"**{emote}**" for emote in self.emotes.keys()]))
+        else:
+            await ctx.send("There is no available emotes. Add them with !emote add emote_name")
 
     @emote.command(aliases=["new", "+", ])
     @has_bot_perms()
@@ -83,6 +86,10 @@ class Emotes(commands.Cog):
                 raise commands.BadArgument(
                     "Emote name should contain only english letters, whitespaces and underscores!")
             filename = f"{name.strip().replace(' ', '_')}{ext}"
+
+        # Create directory for emotes, if it not exists, attachment.save won't do it
+        if not os.path.exists("emotes"):
+            os.mkdir("emotes")
 
         await attachment.save(abs_join("emotes", filename))
         self.load_emotes()
