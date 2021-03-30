@@ -80,8 +80,8 @@ def can_bot_respond(bot: discord.ext.commands.Bot, channel: discord.TextChannel)
     return permissions.send_messages
 
 
-if __name__ == "__main__":
-    pass
+# if __name__ == "__main__":
+#     pass
     # r = fuzzy_search(
     #     "https://discordpy.readthedocs.io/en/attachment/faq.html#how-do-i-use-a-local-image-file-for-an-embed-image",
     #     ["attachment", "file_attached"], score_cutoff=80)

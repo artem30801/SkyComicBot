@@ -47,3 +47,6 @@ class Reactions(commands.Cog):
         emoji = discord.utils.get(collection, name='griffin_hug')
         await message.add_reaction(emoji)
 
+
+def setup(bot):
+    bot.add_cog(Reactions(bot))
