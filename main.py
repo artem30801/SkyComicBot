@@ -10,7 +10,6 @@ from tortoise.models import Model
 import discord
 from discord.ext import commands
 
-
 from cogs.errors import Errors
 from cogs.permissions import Permissions
 from cogs.greetings import Greetings
@@ -34,9 +33,9 @@ async def main():
     config = configparser.ConfigParser()
     config.read("config.ini")
 
-    # bot.add_cog(Errors(bot))
+    bot.add_cog(Errors(bot))
     bot.add_cog(Permissions(bot))
-    # bot.add_cog(Greetings(bot))
+    bot.add_cog(Greetings(bot))
     bot.add_cog(Reactions(bot))
     bot.add_cog(Roles(bot))
     bot.add_cog(Emotes(bot))
@@ -44,9 +43,9 @@ async def main():
     bot.add_cog(Comics(bot))
 
     try:
-        # db_url="sqlite://skybot.db"
+        #db_url="sqlite://skybot.db"
         await Tortoise.init(db_url=config["AUTH"]["db_url"],
-                            modules={"models": ["cogs.greetings", "cogs.permissions",
+                            modules={"models": ["cogs.greetings", "cogs.converters", "cogs.permissions",
                                                 "cogs.roles", "cogs.comics",
                                                 ]
                                      })

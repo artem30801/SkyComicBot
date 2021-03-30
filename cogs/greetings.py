@@ -1,6 +1,7 @@
 import logging
 import math
 import random
+import os
 from datetime import datetime, timedelta
 from dateutil import relativedelta
 from os.path import isfile
@@ -47,12 +48,32 @@ class Greetings(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
-        if self._first_ready:
-            await self.on_first_ready()
-            self._first_ready = False
+        logger.info(f"Logged in as {self.bot.user}")
+
+        self._started_at = datetime.now()
 
         guilds_list = [f"[{g.name}: {g.member_count} members]" for g in self.bot.guilds]
         logger.info(f"Connected. Current servers: {', '.join(guilds_list)}")
+
+        prev_start = self.get_last_startup_time()
+        self.update_last_startup_time()
+
+        # set missing home channels
+        for guild in self.bot.guilds:
+            home_channel, exists_in_db = await self.get_home_channel(guild)
+
+            # try to set a system channel as a home, if entry not exists
+            if not exists_in_db:
+                home_channel = guild.system_channel
+                if not utils.can_bot_respond(self.bot, home_channel):
+                    logger.warning(f"Bot can't send messages to system channel #{home_channel.name} at '{guild.name}'")
+                    continue
+
+                await self.set_home_channel(guild, home_channel)
+
+        # Don't send greetings if last startup was less than a 3 hours ago
+        if prev_start is None or (self._started_at - prev_start > timedelta(hours=3)):
+            await self.send_home_channels_message("Hello hello! I'm back online and ready to work!")
 
     @commands.Cog.listener()
     async def on_member_join(self, member):
@@ -65,6 +86,30 @@ class Greetings(commands.Cog):
         """Says hello to you or mentioned member."""
         member = member or ctx.author
         await ctx.send(self.get_greeting(member))
+
+    @commands.command()
+    @commands.dm_only()
+    @utils.has_bot_perms()
+    async def notify(self, ctx: commands.context.Context, *, message):
+        """Sends message with the first attachment (if there is one) to the home channels of the guilds from the bot"""
+        attachment_file = None
+        if len(ctx.message.attachments) > 0:
+            attachment = ctx.message.attachments[0]
+            filename = attachment.filename
+            filename = str(ctx.message.id) + '_' + filename
+
+            # Create directory for attachments, if it not exists, attachment.save won't do it
+            if not os.path.exists("attachments"):
+                os.mkdir("attachments")
+
+            filepath = utils.abs_join("attachments", filename)
+            await attachment.save(filepath)
+            attachment_file = discord.File(filepath, attachment.filename, spoiler=attachment.is_spoiler())
+
+        await self.send_home_channels_message(message, attachment_file)
+        if attachment_file is not None:
+            os.remove(filepath)
+
 
     @commands.group(aliases=["bind"], case_insensitive=True, invoke_without_command=True)
     @commands.guild_only()
@@ -108,7 +153,7 @@ class Greetings(commands.Cog):
         if utils.can_bot_respond(ctx.bot, old_home):
             await old_home.send("Moved away in the search of a better home")
 
-        await ctx.send("I'm homeless now >_<")        
+        await ctx.send("I'm homeless now >_<")
 
     @commands.command()
     async def uptime(self, ctx):
@@ -126,42 +171,11 @@ class Greetings(commands.Cog):
         """
         await ctx.send(f"Current latency: {math.ceil(self.bot.latency*100)} ms")
 
-    async def on_first_ready(self):
-        logger.info(f"Logged in as {self.bot.user}")
-
-        self._started_at = datetime.now()
-
-        prev_start = self.get_last_startup_time()
-        self.update_last_startup_time()
-
-        # Don't send greetings if last startup was less than a 3 hours ago
-        if prev_start is not None:
-            diff = self._started_at - prev_start
-            if diff < timedelta(hours=3):
-                return
-
-        for guild in self.bot.guilds:
-            home_channel, exists_in_db = await self.get_home_channel(guild)
-
-            # try to set a system channel as a home, if entry not exists
-            if not exists_in_db:
-                home_channel = guild.system_channel
-                if not utils.can_bot_respond(self.bot, home_channel):
-                    logger.warning(f"Bot can't send messages to system channel #{home_channel.name} at '{guild.name}'")
-                    continue
-
-                await self.set_home_channel(guild, home_channel)
-
-            if utils.can_bot_respond(self.bot, home_channel):
-                await home_channel.send("Hello hello! I'm back online and ready to work!")
-            elif home_channel is not None:
-                logger.warning(f"Bot can't send messages to home channel #{home_channel.name} at '{guild.name}'")   
-
     @classmethod
     def get_last_startup_time(cls) -> Optional[datetime]:
         if not isfile(cls.startup_file_name):
             return None
-        
+
         with open(cls.startup_file_name, 'r') as startup_time_file:
             try:
                 return datetime.strptime(startup_time_file.read(), cls.startup_time_format)
@@ -169,7 +183,7 @@ class Greetings(commands.Cog):
                 return None
 
     def update_last_startup_time(self):
-        """writes to the startup file_attached current _started_at file_attached"""
+        """writes to the startup file current _started_at file"""
         with open(self.startup_file_name, 'w') as startup_time_file:
             startup_time_file.write(self._started_at.strftime(self.startup_time_format))
 
@@ -183,14 +197,23 @@ class Greetings(commands.Cog):
             await home_channel.save()
 
     @staticmethod
-    async def get_home_channel(guild: discord.Guild):
+    async def get_home_channel(guild: discord.Guild) -> discord.TextChannel:
         home_channel = await HomeChannels.get_or_none(guild_id=guild.id)
         if home_channel:
             if home_channel.home_channel_id == 0:
                 return None, True
             return guild.get_channel(home_channel.home_channel_id), True
-        
+
         return None, False
+
+    async def send_home_channels_message(self, message: str, attachment: discord.File = None):
+        for guild in self.bot.guilds:
+            home_channel, _ = await self.get_home_channel(guild)
+
+            if utils.can_bot_respond(self.bot, home_channel):
+                await home_channel.send(message, file=attachment)
+            elif home_channel is not None:
+                logger.warning(f"Bot can't send messages to home channel #{home_channel.name} at '{guild.name}'")
 
     def get_greeting(self, member):
         greetings = \
@@ -215,3 +238,33 @@ class Greetings(commands.Cog):
 
         self._last_greeted_member = member
         return message
+
+    @commands.Cog.listener()
+    async def on_member_join(self, member):
+        channel = member.guild.system_channel
+        if channel is not None:
+            await channel.send(f"{self.get_greeting(member)} Welcome!")
+
+    @commands.command(aliases=["hi", ])
+    async def hello(self, ctx, *, member: discord.Member = None):
+        """Says hello to you or mentioned member."""
+        member = member or ctx.author
+        await ctx.send(self.get_greeting(member))
+
+    @commands.command()
+    async def uptime(self, ctx):
+        """Shows how long the bot was running for."""
+        now = datetime.now()
+        delta = relativedelta.relativedelta(now, self._started_at)
+        await ctx.send(f"I was up and running since {self._started_at.strftime('%d/%m/%Y, %H:%M:%S')} "
+                       f"for {display_delta(delta)}")
+
+    @commands.command()
+    async def latency(self, ctx):
+        """
+        Shows latency between bot and Discord servers.
+        Use to check if there are problems with Discord API or bot network.
+        """
+        await ctx.send(f"Current latency: {math.ceil(self.bot.latency*100)} ms")
+
+
