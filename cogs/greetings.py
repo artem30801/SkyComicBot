@@ -1,10 +1,8 @@
 import logging
 import math
 import random
-import os
 from datetime import datetime, timedelta
 from dateutil import relativedelta
-from os.path import isfile
 from typing import Optional
 
 import io
@@ -17,7 +15,6 @@ from discord.ext import commands
 from discord_slash import cog_ext, SlashContext
 from discord_slash.utils.manage_commands import create_option, create_choice
 
-import tortoise
 from tortoise import fields
 from tortoise.models import Model
 
@@ -84,6 +81,25 @@ class Greetings(commands.Cog):
         # Don't send greetings if last startup was less than a 3 hours ago
         if prev_start is None or (self._started_at - prev_start > timedelta(hours=3)):
             await self.send_home_channels_message("Hello hello! I'm back online and ready to work!")
+
+    @commands.Cog.listener()
+    async def on_member_join(self, member):
+        channel = self.get_home_channel(member.guild)
+        if utils.can_bot_respond(self.bot, channel):
+            await channel.send(f"{self.get_greeting(member)} Welcome!")
+
+    @classmethod
+    def get_last_startup_time(cls) -> Optional[datetime]:
+        try:
+            with open(cls.startup_file_name, 'r') as startup_time_file:
+                return datetime.strptime(startup_time_file.read(), cls.startup_time_format)
+        except (ValueError, OSError):
+            return None
+
+    def update_last_startup_time(self):
+        """writes to the startup file current _started_at file"""
+        with open(self.startup_file_name, 'w') as startup_time_file:
+            startup_time_file.write(self._started_at.strftime(self.startup_time_format))
 
     @cog_ext.cog_slash()
     def home_channel(self, ctx: SlashContext):
@@ -180,19 +196,6 @@ class Greetings(commands.Cog):
 
         await ctx.send("I'm homeless now >_<")
 
-    @classmethod
-    def get_last_startup_time(cls) -> Optional[datetime]:
-        try:
-            with open(cls.startup_file_name, 'r') as startup_time_file:
-                return datetime.strptime(startup_time_file.read(), cls.startup_time_format)
-        except (ValueError, OSError):
-            return None
-
-    def update_last_startup_time(self):
-        """writes to the startup file current _started_at file"""
-        with open(self.startup_file_name, 'w') as startup_time_file:
-            startup_time_file.write(self._started_at.strftime(self.startup_time_format))
-
     @staticmethod
     async def set_home_channel(guild: discord.Guild, channel: discord.TextChannel):
         """Sets bots home channel for the server"""
@@ -241,11 +244,6 @@ class Greetings(commands.Cog):
         self._last_greeted_member = member
         return message
 
-    @commands.Cog.listener()
-    async def on_member_join(self, member):
-        channel = self.get_home_channel(member.guild)
-        if utils.can_bot_respond(self.bot, channel):
-            await channel.send(f"{self.get_greeting(member)} Welcome!")
 
     @cog_ext.cog_slash(options=[
                            create_option(
