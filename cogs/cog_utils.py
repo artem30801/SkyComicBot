@@ -13,6 +13,16 @@ from fuzzywuzzy import process
 from fuzzywuzzy import fuzz
 
 
+class CommandsAliases:
+    list_aliases = ["all", "available", "view", ]
+    new_aliases = ["add", "create", "+"]
+    remove_aliases = ["clear", "delete", "yeet", "-"]
+    edit_aliases = ["update", "change", "="]
+
+
+embed_color = 0x72a3f2
+
+
 def fuzzy_search(query, choices, score_cutoff=50):
     result = process.extractOne(query, choices, score_cutoff=score_cutoff, scorer=fuzz.token_set_ratio)
     logging.debug(f"Fuzzy search for {query} in {choices} resulted as {result}")
@@ -23,9 +33,18 @@ def abs_join(*paths):
     return os.path.abspath(os.path.join(*paths))
 
 
+def ensure_dir(directory):
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
+
 async def send_file(channel, path, filename=None):
     file = discord.File(path, filename=filename or os.path.split(path)[1])
     await channel.send(" ", file=file)
+
+
+def url_hostname(url):
+    return url.split("//")[-1].split("/")[0].split('?')[0]
 
 
 def next_number(cls_name, field="number"):
@@ -37,8 +56,37 @@ def next_number(cls_name, field="number"):
     return inner
 
 
+def is_guild_owner():
+    def predicate(ctx):
+        return ctx.guild is not None and ctx.guild.owner_id == ctx.author.id
+    return commands.check(predicate)
+
+
+def has_server_perms():  # perms to manage other people on the server
+    return commands.check_any(is_guild_owner(), commands.is_owner(), commands.has_role("Bot manager"))
+
+
+def has_bot_perms():  # perms to manage bot internal DB
+    return commands.check_any(commands.is_owner())
+
+
+def can_bot_respond(bot: discord.ext.commands.Bot, channel: discord.TextChannel):
+    """Checks, can a bot send messages to this channel"""
+    if bot is None or channel is None:
+        return False
+
+    bot_as_member = channel.guild.get_member(bot.user.id)
+    permissions = channel.permissions_for(bot_as_member)
+    return permissions.send_messages
+
+
 if __name__ == "__main__":
-    l = ["help", "me", "please", "zalside"]
-    print(fuzzy_search("pls", l))
-    print(fuzzy_search("zlolsider", l))
+    pass
+    # r = fuzzy_search(
+    #     "https://discordpy.readthedocs.io/en/attachment/faq.html#how-do-i-use-a-local-image-file-for-an-embed-image",
+    #     ["attachment", "file_attached"], score_cutoff=80)
+    # print(r)
+    # l = ["help", "me", "please", "zalside"]
+    # print(fuzzy_search("pls", l))
+    # print(fuzzy_search("zlolsider", l))
 

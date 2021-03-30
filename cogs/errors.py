@@ -5,6 +5,8 @@ from discord.ext import commands
 
 import traceback
 
+from cogs.cog_utils import send_file, abs_join
+
 logger = logging.getLogger(__name__)
 
 
@@ -23,3 +25,5 @@ class Errors(commands.Cog):
             await ctx.send("You can use that only in guild!")
         else:
             logger.error(f"Error {type(error)} occurred: {error} (in result of {ctx.message.content})")
+            await ctx.send(f"{(await ctx.bot.fetch_user(246333265495982080)).mention} come and fix me!")
+            await send_file(ctx.channel, abs_join("misc", "code.jpg"), "code.jpg")

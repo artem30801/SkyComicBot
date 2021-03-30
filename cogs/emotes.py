@@ -66,7 +66,7 @@ class Emotes(commands.Cog):
     async def add(self, ctx, *, name: typing.Optional[str]):
         """
         Adds new emote.
-        Attach image file to your message.
+        Attach image file_attached to your message.
         You can use this command to edit (replace) existing emote.
         """
         attachments = ctx.message.attachments
