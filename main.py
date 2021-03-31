@@ -14,7 +14,6 @@ from discord_slash import SlashCommand
 # from cogs.errors import Errors
 # from cogs.roles import Roles
 # from cogs.comics import Comics
-# from cogs.emotes import Emotes
 # from cogs.converters import Conversions
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] [%(levelname)-7.7s]-[%(name)-15.15s]: %(message)s")
@@ -34,12 +33,12 @@ async def main():
     config.read("config.ini")
 
     bot.load_extension("cogs.greetings")
-    bot.load_extension("cogs.reactions")
     bot.load_extension("cogs.permissions")
+    bot.load_extension("cogs.reactions")
+    bot.load_extension("cogs.emotes")
 
     # bot.add_cog(Errors(bot))
     # bot.add_cog(Roles(bot))
-    # bot.add_cog(Emotes(bot))
     # bot.add_cog(Conversions(bot, config))
     # bot.add_cog(Comics(bot))
 
