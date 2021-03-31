@@ -19,6 +19,7 @@ from tortoise import fields
 from tortoise.models import Model
 
 import cogs.cog_utils as utils
+import cogs.permissions as permissions
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +75,7 @@ class Greetings(commands.Cog):
         for guild in self.bot.guilds:
             channel = await self.get_home_channel(guild)
 
-            if not utils.can_bot_respond(self.bot, channel):
+            if not utils.can_bot_respond(self.bot, channel) and channel is not None:
                 logger.warning(f"Bot can't send messages to home channel #{channel.name} at '{guild.name}'")
                 continue
 
@@ -84,7 +85,7 @@ class Greetings(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_join(self, member):
-        channel = self.get_home_channel(member.guild)
+        channel = await self.get_home_channel(member.guild)
         if utils.can_bot_respond(self.bot, channel):
             await channel.send(f"{self.get_greeting(member)} Welcome!")
 
@@ -101,11 +102,7 @@ class Greetings(commands.Cog):
         with open(self.startup_file_name, 'w') as startup_time_file:
             startup_time_file.write(self._started_at.strftime(self.startup_time_format))
 
-    @cog_ext.cog_slash()
-    def home_channel(self, ctx: SlashContext):
-        pass
-
-    @cog_ext.cog_subcommand(base="home_channel", name="notify",
+    @cog_ext.cog_subcommand(base="home", name="notify",
                             options=[
                                 create_option(
                                     name="message",
@@ -122,8 +119,7 @@ class Greetings(commands.Cog):
 
                             ],
                             guild_ids=guild_ids)
-    # @commands.dm_only()
-    @utils.has_bot_perms()
+    @permissions.has_bot_perms()
     async def home_channel_notify(self, ctx: SlashContext, message="", attachment_link=None):
         """Sends message with the attachment to the home channels of the guilds from the bot"""
         file = None
@@ -138,7 +134,16 @@ class Greetings(commands.Cog):
         await self.send_home_channels_message(message, file, name)
         await ctx.send("Notification sent")
 
-    @cog_ext.cog_subcommand(base="home_channel", name="set",
+    @cog_ext.cog_subcommand(base="home", name="where", guild_ids=guild_ids)
+    async def home_channel_where(self, ctx: SlashContext):
+        """Shows where current home of the bot in this server is."""
+        current_home = await self.get_home_channel(ctx.guild)
+        if current_home is None:
+            await ctx.send("I'm homeless T_T", hidden=True)
+        else:
+            await ctx.send(f"My home is at {current_home.mention}", hidden=True)
+
+    @cog_ext.cog_subcommand(base="home", name="set",
                             options=[
                                 create_option(
                                     name="new_home",
@@ -149,20 +154,21 @@ class Greetings(commands.Cog):
                             ],
                             guild_ids=guild_ids)
     @commands.guild_only()
-    @utils.has_bot_perms()
+    @permissions.has_server_perms()
     async def home_channel_set(self, ctx: SlashContext, new_home: discord.TextChannel = None):
         """Sets specified channel (or current by default) as a home channel for the bot"""
         if new_home is None:
             new_home = ctx.channel
 
-        if isinstance(new_home, (discord.VoiceChannel, discord.CategoryChannel)):
-            await ctx.send("Hey! That's not a text channel!")
+        if not isinstance(new_home, discord.TextChannel):
+            await ctx.send("Hey! That's not a text channel!", hidden=True)
             return
 
         current_home = await self.get_home_channel(ctx.guild)
 
         if current_home == new_home:
-            await ctx.send(f"I'm already living at {new_home.mention}, but hey, thanks for the invitation!")
+            await ctx.send(f"I'm already living at {new_home.mention}, but hey, thanks for the invitation!",
+                           hidden=True)
             return
 
         await self.set_home_channel(ctx.guild, new_home)
@@ -171,17 +177,17 @@ class Greetings(commands.Cog):
         if not utils.can_bot_respond(ctx.bot, new_home):
             cmd_response += ".. You know I'm muted there, right? -_-"
 
-        await ctx.send(cmd_response)
+        await ctx.send(cmd_response, hidden=True)
         if ctx.channel != current_home and utils.can_bot_respond(ctx.bot, current_home):
             await current_home.send(cmd_response)
 
         if utils.can_bot_respond(ctx.bot, new_home):
             await new_home.send("From now I'm living here, yay!")
 
-    @cog_ext.cog_subcommand(base="home_channel", name="remove", guild_ids=guild_ids)
+    @cog_ext.cog_subcommand(base="home", name="remove", guild_ids=guild_ids)
     @commands.guild_only()
-    @utils.has_bot_perms()
-    async def home_channel_remove(self, ctx):
+    @permissions.has_server_perms()
+    async def home_channel_remove(self, ctx: SlashContext):
         """Removes home channel for the bot"""
         old_home = await self.get_home_channel(ctx.guild)
 
@@ -192,7 +198,7 @@ class Greetings(commands.Cog):
         await HomeChannels.update_or_create(guild_id=ctx.guild.id, defaults={"channel_id": None})
 
         if utils.can_bot_respond(ctx.bot, old_home):
-            await old_home.send("Moved away in the search of a better home")
+            await old_home.send("Moved away in search of a better home")
 
         await ctx.send("I'm homeless now >_<")
 
@@ -244,7 +250,6 @@ class Greetings(commands.Cog):
         self._last_greeted_member = member
         return message
 
-
     @cog_ext.cog_slash(options=[
                            create_option(
                                name="member",
@@ -260,7 +265,7 @@ class Greetings(commands.Cog):
         await ctx.send(self.get_greeting(member))
 
     @cog_ext.cog_slash(guild_ids=guild_ids)
-    async def uptime(self, ctx):
+    async def uptime(self, ctx: SlashContext):
         """Shows how long the bot was running for."""
         now = datetime.now()
         delta = relativedelta.relativedelta(now, self._started_at)
@@ -268,7 +273,7 @@ class Greetings(commands.Cog):
                        f"for {display_delta(delta)}")
 
     @cog_ext.cog_slash(guild_ids=guild_ids)
-    async def latency(self, ctx):
+    async def latency(self, ctx: SlashContext):
         """Shows latency between bot and Discord servers. Use to check if there are network problems."""
         await ctx.send(f"Current latency: {math.ceil(self.bot.latency * 100)} ms")
 

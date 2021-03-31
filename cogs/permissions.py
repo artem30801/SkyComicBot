@@ -2,13 +2,14 @@ import logging
 
 import discord
 from discord.ext import commands
+from discord_slash import cog_ext, SlashContext
+from discord_slash.utils.manage_commands import create_option, create_choice
 
 import tortoise
 from tortoise.models import Model
 from tortoise import fields
 
-import asyncio
-import typing
+guild_ids = [570257083040137237, 568072142843936778]  # TODO REMOVE
 
 
 class BotAdmins(Model):
@@ -20,6 +21,7 @@ class BotAdmins(Model):
 def is_guild_owner():
     def predicate(ctx):
         return ctx.guild is not None and ctx.guild.owner_id == ctx.author.id
+
     return commands.check(predicate)
 
 
@@ -31,6 +33,7 @@ def is_whitelisted():
     async def predicate(ctx):
         permitted = await whitelisted(ctx.author)
         return permitted
+
     return commands.check(predicate)
 
 
@@ -46,42 +49,92 @@ def has_bot_perms():
 
 class Permissions(commands.Cog):
     """Commands to gr"""
+
     def __init__(self, bot):
         self.bot = bot
 
-    async def cog_check(self, ctx):
-        member = ctx.author
+    @staticmethod
+    async def _has_bot_perms(ctx, member: discord.Member):
         return await ctx.bot.is_owner(member) or await whitelisted(member)
 
-    @commands.group(aliases=["permissions", "perm", ], invoke_without_command=True)
-    async def perms(self, ctx, member: typing.Optional[discord.Member] = None):
-        # member = ctx.author or member
-        if member is None:
-            await ctx.send("If you can see this message, you have "
-                           "enough permissions to manage me and my database. Congratulations!")
-            return
+    @cog_ext.cog_subcommand(base="permissions", name="check",
+                            options=[
+                                create_option(
+                                    name="member",
+                                    description="Member to check permissions",
+                                    option_type=discord.Member,
+                                    required=False,
+                                ),
+                            ],
+                            guild_ids=guild_ids)
+    async def permissions_check(self, ctx: SlashContext, member: discord.Member = None):
+        """Checks whether you have enough permissions to manage bots database"""
+        real_member = member or ctx.author
+        mention = "You" if member is None else real_member.mention
 
-        await ctx.send(f"{member.mention} has {'' if await whitelisted(member) else '**NOT** '}"
+        await ctx.send(f"{mention}{'' if self._has_bot_perms(ctx, member) else ' **DO NOT**'} have "
                        f"enough permissions to manage me and my database.",
-                       allowed_mentions=discord.AllowedMentions.none()
+                       allowed_mentions=discord.AllowedMentions.none(),
+                       hidden=True,
                        )
 
-    @perms.command(aliases=["add", "+", "whitelist"])
+    @cog_ext.cog_subcommand(base="permissions", name="list", guild_ids=guild_ids)
+    async def permissions_list(self, ctx: SlashContext):
+        """Shows list of users with permissions for bots database"""
+        permitted_ids = await BotAdmins.filter(permitted=True).values_list("user_id", flat=True) + ctx.bot.owner_ids
+        users = [ctx.bot.get_user(user_id) for user_id in set(permitted_ids)]
+        mentions = [user.mention for user in users if user is not None]
+        await ctx.send(f"Users with bot database access: {', '.join(sorted(mentions))}",
+                       allowed_mentions=discord.AllowedMentions.none(),
+                       hidden=True,
+                       )
+
+    @cog_ext.cog_subcommand(base="permissions", name="grant",
+                            options=[
+                                create_option(
+                                    name="member",
+                                    description="Member to grant permissions to",
+                                    option_type=discord.Member,
+                                    required=True,
+                                ),
+                            ],
+                            guild_ids=guild_ids)
     @commands.is_owner()
-    async def grant(self, ctx, member: discord.Member):
+    async def permissions_grant(self, ctx: SlashContext, member: discord.Member):
+        """Grants permissions to manage bots database to specified user"""
         if await whitelisted(member):
             raise commands.BadArgument(f"{member.display_name} is already whitelisted!")
 
         await BotAdmins.create(user_id=member.id)
-        await ctx.send(f"Granted bot access to {member.mention}", allowed_mentions=discord.AllowedMentions.none())
+        await ctx.send(f"Granted bot access to {member.mention}",
+                       allowed_mentions=discord.AllowedMentions.none(),
+                       hidden=True,
+                       )
 
-    @perms.command(aliases=["remove", "delete", "ban", "-", "blacklist"])
+    @cog_ext.cog_subcommand(base="permissions", name="revoke",
+                            options=[
+                                create_option(
+                                    name="member",
+                                    description="Member to revoke permissions from",
+                                    option_type=discord.Member,
+                                    required=True,
+                                ),
+                            ],
+                            guild_ids=guild_ids)
     @commands.is_owner()
-    async def revoke(self, ctx, member: discord.Member):
+    async def revoke(self, ctx: SlashContext, member: discord.Member):
+        """Revokes permissions to manage bots database from specified user"""
         if not await whitelisted(member):
             raise commands.BadArgument(f"{member.display_name} is not whitelisted anyways!")
 
         user = await BotAdmins.get(user_id=member.id)
         await user.delete()
 
-        await ctx.send(f"Revoked bot access from {member.mention}", allowed_mentions=discord.AllowedMentions.none())
+        await ctx.send(f"Revoked bot access from {member.mention}",
+                       allowed_mentions=discord.AllowedMentions.none(),
+                       hidden=True
+                       )
+
+
+def setup(bot):
+    bot.add_cog(Permissions(bot))

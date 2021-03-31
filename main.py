@@ -12,7 +12,6 @@ from discord.ext import commands
 from discord_slash import SlashCommand
 
 # from cogs.errors import Errors
-# from cogs.permissions import Permissions
 # from cogs.roles import Roles
 # from cogs.comics import Comics
 # from cogs.emotes import Emotes
@@ -22,7 +21,7 @@ logging.basicConfig(level=logging.INFO, format="[%(asctime)s] [%(levelname)-7.7s
 nest_asyncio.apply()
 
 bot = commands.Bot(command_prefix=commands.when_mentioned_or("-", "!"), case_insensitive=True,
-                   intents=discord.Intents.all())
+                   intents=discord.Intents.all(), owner_ids=[246333265495982080, 248892679813857280])
 slash = SlashCommand(bot, override_type=True)
 
 # https://discordapp.com/oauth2/authorize?&client_id=804306819660644372&scope=bot&permissions=1446509632
@@ -36,11 +35,9 @@ async def main():
 
     bot.load_extension("cogs.greetings")
     bot.load_extension("cogs.reactions")
+    bot.load_extension("cogs.permissions")
 
     # bot.add_cog(Errors(bot))
-    # bot.add_cog(Permissions(bot))
-    # bot.add_cog(Greetings(bot))
-    # bot.add_cog(Reactions(bot))
     # bot.add_cog(Roles(bot))
     # bot.add_cog(Emotes(bot))
     # bot.add_cog(Conversions(bot, config))

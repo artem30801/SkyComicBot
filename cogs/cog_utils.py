@@ -56,20 +56,6 @@ def next_number(cls_name, field="number"):
     return inner
 
 
-def is_guild_owner():
-    def predicate(ctx):
-        return ctx.guild is not None and ctx.guild.owner_id == ctx.author.id
-    return commands.check(predicate)
-
-
-def has_server_perms():  # perms to manage other people on the server
-    return commands.check_any(is_guild_owner(), commands.is_owner(), commands.has_role("Bot manager"))
-
-
-def has_bot_perms():  # perms to manage bot internal DB
-    return commands.check_any(commands.is_owner())
-
-
 def can_bot_respond(bot: discord.ext.commands.Bot, channel: discord.TextChannel):
     """Checks, can a bot send messages to this channel"""
     if bot is None or channel is None:
