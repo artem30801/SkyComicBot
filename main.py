@@ -4,8 +4,7 @@ import logging
 import asyncio
 import nest_asyncio
 
-from tortoise import Tortoise, fields, run_async
-from tortoise.models import Model
+from tortoise import Tortoise, run_async
 
 import discord
 from discord.ext import commands
@@ -34,6 +33,7 @@ async def main():
 
     bot.load_extension("cogs.greetings")
     bot.load_extension("cogs.permissions")
+    bot.load_extension("cogs.errors")
     bot.load_extension("cogs.reactions")
     bot.load_extension("cogs.emotes")
 

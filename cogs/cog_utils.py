@@ -13,13 +13,6 @@ from fuzzywuzzy import process
 from fuzzywuzzy import fuzz
 
 
-class CommandsAliases:
-    list_aliases = ["all", "available", "view", ]
-    new_aliases = ["add", "create", "+"]
-    remove_aliases = ["clear", "delete", "yeet", "-"]
-    edit_aliases = ["update", "change", "="]
-
-
 embed_color = 0x72a3f2
 
 

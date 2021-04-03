@@ -5,6 +5,7 @@ from discord.ext import commands
 from discord_slash import cog_ext, SlashContext
 from discord_slash.utils.manage_commands import create_option, create_choice
 
+import tortoise
 from tortoise.models import Model
 from tortoise import fields
 
@@ -71,7 +72,7 @@ class Permissions(commands.Cog):
         real_member = member or ctx.author
         mention = "You" if member is None else real_member.mention
 
-        await ctx.send(f"{mention}{'' if self._has_bot_perms(ctx, member) else ' **DO NOT**'} have "
+        await ctx.send(f"{mention}{'' if await self._has_bot_perms(ctx, real_member) else ' **DO NOT**'} have "
                        f"enough permissions to manage me and my database.",
                        allowed_mentions=discord.AllowedMentions.none(),
                        hidden=True,
