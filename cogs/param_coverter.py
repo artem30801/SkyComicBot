@@ -13,7 +13,7 @@ from dataclasses import dataclass, asdict
 
 from cogs import db_utils
 from cogs.cog_utils import fuzzy_search
-from cogs import comics
+# from cogs import comics
 
 
 @dataclass
@@ -24,59 +24,6 @@ class FieldSchema:
     required: bool = False
     fk: bool = False
     converter: tuple = ()
-
-
-class ParamConverter(commands.Converter):
-    def __init__(self, conversion_schema):
-        self.conversion_schema = conversion_schema
-
-    @staticmethod
-    def parse_params(params: str) -> dict:
-        if not params:
-            return {}
-        try:
-            params_list = shlex.split(params.strip())  # re.findall(r'(?:[^\s,"]|"(?:\\.|[^"])*")+', params)
-            params_dict = dict(param.split('=', 1) for param in params_list)
-        except ValueError:
-            raise commands.BadArgument("Separate field name and value by '=' like this: *name=SomeName*")
-        params_dict = {key: value.replace('"', '') for key, value in params_dict.items()}
-        # params_dict = {"path" if key == path else key: value for key, value in params_dict.items()}
-
-        return params_dict
-
-    def _is_file_upload(self, key, field):
-        return key.endswith("file")
-
-    async def convert(self, ctx, argument, parsed=None):
-        params_dict = self.parse_params(argument)
-
-        converted = parsed or dict()
-        # files = [attachment.proxy_url for attachment in ctx.message.attachments]
-
-        for key, field in self.conversion_schema.items():
-            is_file_upload = self._is_file_upload(key, field)
-            if key in params_dict or is_file_upload:
-                raw_value = params_dict.get(key, None)
-                # if is_file_upload and FileConverter.is_attachment_arg(raw_value):
-                #     raw_value = files
-                value = await self.convert_value(ctx, raw_value, field)
-
-                if value is not None or raw_value is not None:
-                    converted[key] = value  # if not is_file_upload else "file"
-
-        if not converted:
-            raise commands.BadArgument("No valid arguments were included")
-        return converted
-
-    async def convert_value(self, ctx, raw_value, converter):
-        if isinstance(converter, commands.Converter):
-            converter = converter.convert
-        if asyncio.iscoroutinefunction(converter):
-            value = await converter(ctx, raw_value)
-        else:
-            value = converter(ctx, raw_value)
-
-        return value
 
 
 class ModelParamConverter(ParamConverter):
