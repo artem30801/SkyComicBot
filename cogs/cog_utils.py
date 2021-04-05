@@ -15,6 +15,7 @@ from fuzzywuzzy import fuzz
 
 embed_color = 0x72a3f2
 bot_manager_role = "Bot manager"
+stream_crew_role = "livestream crew"
 
 
 class StartupCog(commands.Cog):

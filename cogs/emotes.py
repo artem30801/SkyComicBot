@@ -16,6 +16,7 @@ from urllib.parse import urlparse
 from pathlib import Path
 
 from cogs.cog_utils import fuzzy_search, abs_join, send_file
+import cogs.cog_utils as utils
 from cogs.permissions import has_server_perms, has_bot_perms
 
 logger = logging.getLogger(__name__)
@@ -130,8 +131,7 @@ class Emotes(commands.Cog):
         filename = f"{name.strip().replace(' ', '_')}{ext}"
 
         # Create directory for emotes, if it not exists, attachment.save won't do it
-        if not os.path.exists("emotes"):
-            os.mkdir("emotes")
+        utils.ensure_dir("emotes")
 
         async with aiohttp.ClientSession() as session:
             async with session.get(attachment_link) as response:

@@ -367,7 +367,7 @@ class Roles(utils.StartupCog):
             raise commands.BadArgument(f"Role {role.mention} is not in bots database! "
                                        f"You probably shouldn't use that role")
 
-        if (member != ctx.author or role.name == utils.bot_manager_role or not role.assignable) \
+        if (member != ctx.author or db_role.name == utils.bot_manager_role or not db_role.assignable) \
                 and not has_server_perms():
             # MissingPermissions expects an array of permissions
             raise commands.MissingPermissions([utils.bot_manager_role])
@@ -402,15 +402,15 @@ class Roles(utils.StartupCog):
         """Remove specified role from you or specified member"""
         member = member or ctx.author
 
-        if (member != ctx.author or not role.assignable) and not has_server_perms():
-            # MissingPermissions expects an array of permissions
-            raise commands.MissingPermissions([utils.bot_manager_role])
-
         try:
             db_role = await Role.get(name=role.name)
         except exceptions.DoesNotExist:
             raise commands.BadArgument(f"Role {role.mention} is not in bots database! "
                                        f"You probably shouldn't touch that role")
+
+        if (member != ctx.author or not db_role.assignable) and not has_server_perms():
+            # MissingPermissions expects an array of permissions
+            raise commands.MissingPermissions([utils.bot_manager_role])
 
         await member.remove_roles(role)
         await ctx.send(f"Removed role {role.mention} from {member.mention}",
@@ -434,18 +434,18 @@ class Roles(utils.StartupCog):
 
         await self.update_options()
 
-    @cog_ext.cog_subcommand(base="role", name="remove",
+    @cog_ext.cog_subcommand(base="role", name="delete",
                             options=[
                                 create_option(
                                     name="role",
-                                    description="Role name to remove",
+                                    description="Role name to delete",
                                     option_type=str,
                                     required=True,
                                 ),
                             ],
                             guild_ids=guild_ids)
     @has_bot_perms()
-    async def role_remove(self, ctx: SlashContext, role):
+    async def role_delete(self, ctx: SlashContext, role):
         """Completely removes role from internal DB"""
         role = (await db_utils.process(Role, {"role": role}, fk_dict))["role"]
         if not role.archived:
@@ -509,16 +509,23 @@ class Roles(utils.StartupCog):
         member = ctx.author
         group = self._sider_group
 
-        if side == -1:
-            await self.remove_conflicting_roles(ctx, member, group)
-            await ctx.send("You're a *noside* now! Is that what you wanted?")
-            return
-
         role_names = [role.name for role in member.roles]
         previous_roles = await Role.filter(group=group, name__in=role_names).values_list("name", flat=True)
-        await self.remove_conflicting_roles(ctx, member, group)
+
+        if side == -1:
+            if not previous_roles:
+                await ctx.send("But... you're already a noside, isn't you?")
+            else:
+                await self.remove_conflicting_roles(ctx, member, group)
+                await ctx.send("You're a *noside* now! Is that what you wanted?")
+            return
 
         side = await Role.get(id=side)
+        if side.name in role_names:
+            await ctx.send(f"Aren't you already a {side.name}, {member.display_name}?")
+
+        await self.remove_conflicting_roles(ctx, member, group)
+
         try:
             role = await commands.RoleConverter().convert(ctx, side.name)
         except commands.RoleNotFound:
@@ -535,7 +542,45 @@ class Roles(utils.StartupCog):
             message = "Splish-splash!"
         else:
             message = f"You're a **{role.name}** now!"
-        await ctx.send(message, hidden=True)
+        await ctx.send(message)
+
+    @cog_ext.cog_subcommand(base="side", name="leave", guild_ids=guild_ids)
+    async def side_leave(self, ctx: SlashContext):
+        await self.side_join.invoke(ctx, side=-1)
+
+    @cog_ext.cog_subcommand(base="livestream_crew", name="join", options=[], guild_ids=guild_ids)
+    async def streamcrew_join(self, ctx: SlashContext, join=True):
+        """Receive 'livestream crew' role to get pings when LynxGriffin is streaming!"""
+        try:
+            db_role = await Role.get(name=utils.stream_crew_role)
+        except exceptions.DoesNotExist:
+            raise commands.CheckFailure(
+                f"Sorry, but this command is unavailable as there is no **{utils.stream_crew_role}** role in DB.")
+        try:
+            role = await commands.RoleConverter().convert(ctx, db_role.name)
+        except commands.RoleNotFound:
+            raise commands.CheckFailure(
+                f"Sorry, but this command is unavailable as there is no **{utils.stream_crew_role}** role "
+                f"on this server yet.")
+
+        member = ctx.author
+        if join:
+            if role in member.roles:
+                await ctx.send(f"Do you need **more** pings, {member.mention}? You're already in livestream crew")
+            else:
+                await member.add_roles(role)
+                await ctx.send("Welcome to the livestream crew! Enjoy your pings ;)")
+        else:
+            if role not in member.roles:
+                await ctx.send("You're not in the livestream crew? Never have been 🔫")
+            else:
+                await member.remove_roles(role)
+                await ctx.send("Goodbye o7")
+
+    @cog_ext.cog_subcommand(base="livestream_crew", name="leave", guild_ids=guild_ids)
+    async def streamcrew_leave(self, ctx: SlashContext):
+        """Leave 'livestream crew'"""
+        await self.streamcrew_join.invoke(ctx, join=False)
 
 
 def setup(bot):
