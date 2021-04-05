@@ -61,18 +61,18 @@ class Permissions(commands.Cog):
                             options=[
                                 create_option(
                                     name="member",
-                                    description="Member to check permissions",
+                                    description="Member to check permissions (or yourself if empty)",
                                     option_type=discord.Member,
                                     required=False,
                                 ),
                             ],
                             guild_ids=guild_ids)
     async def permissions_check(self, ctx: SlashContext, member: discord.Member = None):
-        """Checks whether you have enough permissions to manage bots database"""
-        real_member = member or ctx.author
-        mention = "You" if member is None else real_member.mention
+        """Checks whether you (or specified user) have enough permissions to manage bots database"""
+        member = member or ctx.author
+        mention = member.mention if member != ctx.author else "You"
 
-        await ctx.send(f"{mention}{'' if await self._has_bot_perms(ctx, real_member) else ' **DO NOT**'} have "
+        await ctx.send(f"{mention}{'' if await self._has_bot_perms(ctx, member) else ' **DO NOT**'} have "
                        f"enough permissions to manage me and my database.",
                        allowed_mentions=discord.AllowedMentions.none(),
                        hidden=True,

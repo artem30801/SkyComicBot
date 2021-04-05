@@ -19,7 +19,7 @@ from tortoise import fields
 from tortoise.models import Model
 
 import cogs.cog_utils as utils
-import cogs.permissions as permissions
+from cogs.permissions import has_server_perms, has_bot_perms
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +119,7 @@ class Greetings(commands.Cog):
 
                             ],
                             guild_ids=guild_ids)
-    @permissions.has_bot_perms()
+    @has_bot_perms()
     async def home_channel_notify(self, ctx: SlashContext, message="", attachment_link=None):
         """Sends message with the attachment to the home channels of the guilds from the bot"""
         file = None
@@ -154,7 +154,7 @@ class Greetings(commands.Cog):
                             ],
                             guild_ids=guild_ids)
     @commands.guild_only()
-    @permissions.has_server_perms()
+    @has_server_perms()
     async def home_channel_set(self, ctx: SlashContext, new_home: discord.TextChannel = None):
         """Sets specified channel (or current by default) as a home channel for the bot"""
         if new_home is None:
@@ -186,7 +186,7 @@ class Greetings(commands.Cog):
 
     @cog_ext.cog_subcommand(base="home", name="remove", guild_ids=guild_ids)
     @commands.guild_only()
-    @permissions.has_server_perms()
+    @has_server_perms()
     async def home_channel_remove(self, ctx: SlashContext):
         """Removes home channel for the bot"""
         old_home = await self.get_home_channel(ctx.guild)

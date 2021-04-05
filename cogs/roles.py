@@ -1,49 +1,43 @@
 import logging
-import shlex
-from dataclasses import dataclass
 
 import discord
 from discord.ext import commands
+from discord_slash import cog_ext, SlashContext
+from discord_slash.utils.manage_commands import create_option, create_choice
 
 import tortoise
-from tortoise.models import Model
 from tortoise import fields
-from tortoise.functions import Max
+from tortoise import exceptions
+from tortoise.models import Model
 from tortoise.transactions import atomic
 
 import asyncio
 import typing
 
+import cogs.cog_utils as utils
+import cogs.db_utils as db_utils
 from cogs.permissions import has_server_perms, has_bot_perms
-from cogs.cog_utils import fuzzy_search, CommandsAliases
-from cogs.db_utils import reshuffle
-from cogs.param_coverter import ParamConverter
+
 logger = logging.getLogger(__name__)
 
+role_number = db_utils.NextNumber()
+group_number = db_utils.NextNumber()
 
-def next_number(cls_name, field="number"):
-    def inner():
-        loop = asyncio.get_event_loop()
-        cls = globals()[cls_name]
-        max_number = loop.run_until_complete(cls.annotate(m=Max(field)).values_list("m", flat=True))[0]
-        return max_number + 1 if max_number is not None else 0
-
-    return inner
-
-
-# def next_role_number():
-#     loop = asyncio.get_event_loop()
-#     max_number = loop.run_until_complete(Role.annotate(m=Max("number")).values_list("m", flat=True))[0]
-#     return max_number + 1 if max_number is not None else 0
+guild_ids = [570257083040137237, 568072142843936778]
 
 
 class Role(Model):
     id = fields.IntField(pk=True)
-    name = fields.TextField()
-    color = fields.IntField()
-    number = fields.IntField(default=next_number("Role"))
-    archived = fields.BooleanField(default=False)
-    group = fields.ForeignKeyField("models.RoleGroup", related_name="roles")
+    name = fields.CharField(max_length=250, unique=True, description="Name of the role")
+    color = db_utils.ColorField(default=discord.Colour(0), description="Color of the role")
+    number = fields.IntField(default=role_number, description="Priority (ordering) of the role")  # default=role_number,
+    archived = fields.BooleanField(default=False,
+                                   description="Archived roles remain in internal DB but removed from discord servers")
+    assignable = fields.BooleanField(default=True,
+                                     description="Whether role can be assigned by regular member to themselves")
+    mentionable = fields.BooleanField(default=True, description="Whether people can mention this role")
+    group = fields.ForeignKeyField("models.RoleGroup", related_name="roles",
+                                   description="Role group this role belongs to")
 
     class Meta:
         ordering = ["number"]
@@ -54,94 +48,24 @@ class Role(Model):
 
 class RoleGroup(Model):
     id = fields.IntField(pk=True)
-    name = fields.TextField()
-    number = fields.IntField(default=next_number("RoleGroup"))
-    # archived = fields.BooleanField(default=False)
-    exclusive = fields.BooleanField(default=True)
+    name = fields.CharField(max_length=250, unique=True, description="Name of the group")
+    number = fields.IntField(default=group_number,
+                             description="Priority (ordering) of the group")  # default=group_number,
+    exclusive = fields.BooleanField(default=False,
+                                    description="Whether users can have only one role from this group at time")
     roles: fields.ReverseRelation["Role"]
 
     class Meta:
         ordering = ["number"]
+        use_choices = True
 
     def __str__(self):
         return self.name
 
 
-class RoleGroupConverter(commands.Converter):
-    async def convert(self, ctx, argument):
-        group_name = fuzzy_search(argument, await RoleGroup.all().values_list("name", flat=True))
-        if group_name is None:
-            raise commands.BadArgument(f"Sorry, I cant find role group **{argument}**. "
-                                       f"Try *!role groups* command to see available groups")
-        return await RoleGroup.get(name=group_name)
-
-
-class DBRoleConverter(commands.RoleConverter):
-    async def convert(self, ctx, argument):
-        try:
-            role = await super().convert(ctx, argument)  # try to get role directly (for mentions and stuff)
-            role_name = role.name
-        except commands.RoleNotFound:  # if cant, try to fuzzy search
-            role_name = None
-
-        db_role_name = fuzzy_search(role_name or argument,
-                                    await Role.exclude(archived=True).values_list("name", flat=True),
-                                    score_cutoff=60)
-
-        if db_role_name is None:
-            if role_name is None:
-                raise commands.RoleNotFound(argument)
-            else:
-                raise commands.BadArgument(f"Role {argument} is not in internal roles DB")
-        return await Role.get(name=db_role_name)
-
-
-class DiscordRoleConverter(DBRoleConverter):
-    async def convert(self, ctx, argument):
-        db_role = await super().convert(ctx, argument)
-        roles = ctx.guild.roles
-        result = discord.utils.get(roles, name=db_role.name)
-        if result is None:
-            raise commands.RoleNotFound(argument)
-
-        return result
-
-
-@dataclass
-class RolesWithTarget:
-    roles: [discord.Role]
-    target: discord.Member
-
-
-class RolesWithTargetConverter(commands.Converter):
-    """
-    Converter that converts a line to RolesWithTarget object with roles
-    If every word in the line is a valid role, then message author will be a target
-    If conversion is failed, then exception from failed conversion will be raised
-    """
-
-    roles_converter = DiscordRoleConverter()
-    members_converter = commands.MemberConverter()
-
-    async def convert(self, ctx, message):
-        args = shlex.split(message)
-        roles = []
-        target = None
-
-        for idx, arg in enumerate(args):
-            try:
-                roles.append(await self.roles_converter.convert(ctx, arg))
-            except commands.RoleNotFound as exception:
-                if idx == len(args) - 1 and idx > 0:
-                    # this is last argument and it can be a target
-                    try:
-                        target = await self.members_converter.convert(ctx, arg)
-                    except commands.MemberNotFound:
-                        raise commands.BadArgument(f"'{arg}' is not a valid role or user")
-                else:
-                    raise exception
-
-        return RolesWithTarget(roles, target or ctx.author)
+role_number.set_model(Role)
+group_number.set_model(RoleGroup)
+fk_dict = {"group": RoleGroup, "role": Role}
 
 
 class RoleGroupStates:
@@ -150,11 +74,37 @@ class RoleGroupStates:
     archived = "all roles are archived"
 
 
-class Roles(commands.Cog):
+class Roles(utils.StartupCog):
     """Roles management commands"""
 
     def __init__(self, bot):
+        super().__init__()
         self.bot = bot
+        self._sider_group = None
+
+    async def on_startup(self):
+        await self.update_options()
+
+    async def update_options(self):
+
+        self.group_add.options = await db_utils.generate_db_options(RoleGroup)
+        self.group_edit.options = await db_utils.generate_db_options(RoleGroup, edit="group")
+
+        self.role_add.options = await db_utils.generate_db_options(Role)
+        self.role_edit.options = await db_utils.generate_db_options(Role, edit="role")
+
+        group_choices = [create_choice(name=group.name, value=group.id) for group in await RoleGroup.all()][:25]
+        group_commands = [self.group_info, self.group_remove, self.group_archive]
+        for command in group_commands:
+            command.options[0]["choices"] = group_choices
+
+        if self._sider_group is None:
+            self._sider_group = await RoleGroup.get_or_none(name="Sider")
+        if self._sider_group is not None:
+            sider_choices = [create_choice(name=role.name, value=role.id)
+                             for role in await Role.filter(group=self._sider_group)][:24]
+            sider_choices.insert(0, create_choice(name="Noside", value=-1))
+            self.side_join.options[0]["choices"] = sider_choices
 
     async def update_guilds_roles(self):
         db_roles = await Role.exclude(archived=True)
@@ -167,9 +117,10 @@ class Roles(commands.Cog):
                 position -= 1
                 try:
                     if role is not None:
-                        await role.edit(colour=db_role.color, mentionable=True, position=position)
+                        await role.edit(colour=db_role.color, mentionable=db_role.mentionable, position=position)
                     else:
-                        role = await guild.create_role(name=db_role.name, colour=db_role.color, mentionable=True)
+                        role = await guild.create_role(name=db_role.name, colour=db_role.color,
+                                                       mentionable=db_role.mentionable)
                         await role.edit(position=position)
                 except discord.errors.Forbidden:
                     logger.warning(f"Can't setup role {db_role.name} at {guild.name}")
@@ -212,33 +163,35 @@ class Roles(commands.Cog):
             return RoleGroupStates.archived
         return RoleGroupStates.normal
 
-    @commands.group(aliases=["roles", "r"], case_insensitive=True, invoke_without_command=True)
-    async def role(self, ctx, member: typing.Optional[discord.Member] = None):
-        """Role management commands, main command shows you your roles. You can use mentions instead of role names"""
-        if ctx.invoked_subcommand is not None:
-            return
+    @cog_ext.cog_subcommand(base="role", name="check",
+                            options=[
+                                create_option(
+                                    name="member",
+                                    description="Member to check roles (or yourself if empty)",
+                                    option_type=discord.Member,
+                                    required=False,
+                                ),
+                            ],
+                            guild_ids=guild_ids)
+    async def role_check(self, ctx: SlashContext, member: discord.Member = None):
+        """Shows your (or specified users) roles"""
 
         member = member or ctx.author
-        mention = f"{member.mention}" if member != ctx.author else "You"
+        mention = member.mention if member != ctx.author else "You"
         if len(member.roles) <= 1:
             role_text = "don't have any roles"
         else:
             mentions = [role.mention for role in member.roles[1:]]
             role_text = f"have following roles:  {', '.join(mentions)}"
 
-        await ctx.send(f"{mention} {role_text}. To view available roles, use !role list",
-                       allowed_mentions=discord.AllowedMentions.none())
+        await ctx.send(f"{mention} {role_text}. To view available roles, use /role list",
+                       allowed_mentions=discord.AllowedMentions.none(),
+                       hidden=True)
 
-    @role.group(name="list", aliases=CommandsAliases.list_aliases)
-    async def role_list(self, ctx):
-        """
-        Shows list of all available roles
-        Roles are grouped by role group
-        """
-        if ctx.invoked_subcommand is not None:
-            return
-
-        embed = discord.Embed(title="Available roles:", color=0x72a3f2)
+    @cog_ext.cog_subcommand(base="role", name="list", guild_ids=guild_ids)
+    async def role_list(self, ctx: SlashContext):
+        """Shows list of all available roles .Roles are grouped by role group"""
+        embed = discord.Embed(title="Available roles:", color=utils.embed_color)
         db_groups = await RoleGroup.all()
         for group in db_groups:
             if await self.get_group_state(group) != RoleGroupStates.normal:
@@ -251,39 +204,45 @@ class Roles(commands.Cog):
 
         await ctx.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
 
-    @role_list.command(name="db")
-    async def list_db(self, ctx):
+    @cog_ext.cog_subcommand(base="role", name="database", guild_ids=guild_ids)
+    @has_server_perms()
+    async def list_db(self, ctx: SlashContext):
         """Shows list of roles in internal DB with additional data"""
         db_roles = await Role.all()
         role_mentions = [f"{self.get_role_repr(ctx, role.name)} "
-                         f"*(color={discord.Color(role.color)}, archived={role.archived}, "
+                         f"*(color={role.color}, archived={role.archived}, "
                          f"priority={role.number}, group={(await role.group).name})*" for role in db_roles]
         await ctx.send("All roles in DB: \n" + "\n".join(role_mentions),
-                       allowed_mentions=discord.AllowedMentions.none())
+                       allowed_mentions=discord.AllowedMentions.none(),
+                       hidden=True)
 
-    @role.group(name="group", aliases=["groups", "role_group", "g"], invoke_without_command=True)
-    async def role_group(self, ctx, *, group: RoleGroupConverter() = None):
-        """Shows list of role groups or info about specified group"""
-        if ctx.invoked_subcommand is not None:
-            return
-        if group is None:
-            await self.group_list.invoke(ctx)
-            return
-
-        embed = discord.Embed(title=group.name, color=0x72a3f2)
+    @cog_ext.cog_subcommand(base="role", subcommand_group="group", name="info",
+                            options=[
+                                create_option(
+                                    name="group",
+                                    description="Group to get info about",
+                                    option_type=int,
+                                    required=True,
+                                ),
+                            ],
+                            guild_ids=guild_ids)
+    async def group_info(self, ctx: SlashContext, group):
+        """Shows info about specified group"""
+        group = await RoleGroup.get(id=group)
+        embed = discord.Embed(title=group.name, color=utils.embed_color)
         db_roles = await group.roles
 
         role_mentions = [self.get_role_repr(ctx, role.name) if not role.archived else f"**{role.name}** (archived)"
                          for role in db_roles]
         if role_mentions:
-            embed.description = "Available roles: " + "\n".join(role_mentions)
+            embed.add_field(name="Available roles", value="\n".join(role_mentions))
         else:
             embed.description = "Woe is me, there are no roles in this group!"
 
         await ctx.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
 
-    @role_group.command(name="list", aliases=CommandsAliases.list_aliases + ["db", ])
-    async def group_list(self, ctx):
+    @cog_ext.cog_subcommand(base="role", subcommand_group="group", name="list", guild_ids=guild_ids)
+    async def group_list(self, ctx: SlashContext):
         """Shows a list of role groups with additional data"""
 
         async def display_group(group):
@@ -291,232 +250,293 @@ class Roles(commands.Cog):
             name = f"**{group.name}**"
             if state == RoleGroupStates.normal:
                 role_count = len(await group.roles)
-                state = f"has {role_count} assigned role{'s' if role_count>1 else ''}"
+                state = f"has {role_count} assigned role{'s' if role_count > 1 else ''}"
             return f"{name} *({state}, exclusive={group.exclusive})*"
 
         db_groups = await RoleGroup.all()
         await ctx.send("Available role groups (by internal DB): \n" +
-                       "\n".join([await display_group(group) for group in db_groups]))
+                       "\n".join([await display_group(group) for group in db_groups]),
+                       hidden=True)
 
-    @role_group.command(name="new", aliases=CommandsAliases.new_aliases)
+    @cog_ext.cog_subcommand(base="role", subcommand_group="group", name="add", guild_ids=guild_ids)
     @has_bot_perms()
-    async def new_group(self, ctx, name, exclusive: typing.Optional[bool] = False):
+    async def group_add(self, ctx: SlashContext, *args, **params):
         """Adds new role group to internal DB"""
-        if await RoleGroup.exists(name=name):
-            raise commands.BadArgument(f"Role group **{name}** already exists!")
+        # params = utils.convert_args(self.group_add, args, params)
+        params = await db_utils.process(RoleGroup, params, fk_dict)
+        instance = await RoleGroup.create(**params)
+        await ctx.send(f"Successfully added role group **{instance.name}** *(exclusive={instance.exclusive})*",
+                       hidden=True)
+        await self.update_options()
 
-        await RoleGroup.create(name=name, exclusive=exclusive)
-        await ctx.send(f"Successfully added role group **{name}** *(exclusive={exclusive})*")
-
-    @role_group.command(name="remove", aliases=CommandsAliases.remove_aliases)
+    @cog_ext.cog_subcommand(base="role", subcommand_group="group", name="remove",
+                            options=[
+                                create_option(
+                                    name="group",
+                                    description="Group to remove",
+                                    option_type=int,
+                                    required=True,
+                                ),
+                            ],
+                            guild_ids=guild_ids)
     @has_bot_perms()
-    async def remove_group(self, ctx, group: RoleGroupConverter()):
+    async def group_remove(self, ctx: SlashContext, group):
         """Removes specified group from internal DB"""
+        group = await RoleGroup.get(id=group)
         name = group.name
-        if self.get_group_state(group) not in (RoleGroupStates.archived, RoleGroupStates.empty):
+        if await self.get_group_state(group) not in (RoleGroupStates.archived, RoleGroupStates.empty):
             raise commands.BadArgument(f"Cannot delete role group **{name}**! "
                                        f"Archive all roles in the role group or move them to other groups!")
         await group.delete()
-        # logger.warning(f"User {ctx.author.name}/{ctx.author.} (from {ctx.guild}) removed role group {name}")
-        await ctx.send(f"Successfully removed role group **{name}**")
+        logger.warning(f"User {ctx.author.name}/{ctx.author.mention} (from {ctx.guild}) removed role group {name}")
+        await ctx.send(f"Successfully removed role group **{name}**", hidden=True)
+        await self.update_options()
 
-    @role_group.command(name="edit", aliases=CommandsAliases.edit_aliases)
+    @cog_ext.cog_subcommand(base="role", subcommand_group="group", name="edit", guild_ids=guild_ids)
     @has_bot_perms()
     @atomic()
-    async def edit_group(self, ctx, group: RoleGroupConverter(), *, params):
-        """
-        Edits specified role group
-        Specify params like this: name="New name" priority=1 exclusive=False archived=False
-        You are free to use any combinations of params
-        Use quotation for space-separated names\strings
-        """
-        converter = ParamConverter({"name": convert_ensure_unique(RoleGroup), "priority": convert_to_int,
-                                    "archived": convert_to_bool, "exclusive": convert_to_bool})
-        converted = await converter.convert(ctx, params)
-        converted_msg = converted.copy()
-
-        if "priority" in converted:
-            priority = converted.pop("priority")
-            await reshuffle(RoleGroup, group, priority)
-            converted["number"] = priority
-
-        if "archived" in converted:
-            archived = converted.pop("archived")
-            await Role.filter(group=group).update(archived=archived)
-            await self.update_guilds_roles()
+    async def group_edit(self, ctx: SlashContext, *args, **params):
+        """Edits specified role group"""
+        params = await db_utils.process(RoleGroup, params, fk_dict)
+        group = params.pop("group")
 
         old_name = group.name
-        group = group.update_from_dict(converted)
+        group = group.update_from_dict(params)
         await group.save()
         await ctx.send(f"Updated role group **{old_name}** with new parameters: "
-                       f"*{', '.join([f'{key}={value}' for key, value in converted_msg.items()])}*")
+                       f"{utils.format_params(params)}",
+                       hidden=True)
+        await self.update_options()
 
-    @role_group.command(name="archive", )
+    @cog_ext.cog_subcommand(base="role", subcommand_group="group", name="archive",
+                            options=[
+                                create_option(
+                                    name="group",
+                                    description="Group to archive/unarchive",
+                                    option_type=int,
+                                    required=True,
+                                ),
+                                create_option(
+                                    name="action",
+                                    description="Whether to archive/unarchive role group",
+                                    option_type=int,
+                                    required=False,
+                                    choices=[create_choice(name="archive", value=int(True)),
+                                             create_choice(name="unarchive", value=int(False))]
+                                )
+                            ],
+                            guild_ids=guild_ids)
     @has_bot_perms()
-    async def archive_group(self, ctx, group: RoleGroupConverter(), archive: typing.Optional[bool] = True):
+    async def group_archive(self, ctx: SlashContext, group, archive: bool = True):
         """Archives or unarchives all roles in specified group"""
-        await self.edit_group(ctx, group, params=f"archived={archive}")
+        await ctx.defer(True)
+        group = await RoleGroup.get(id=group)
+        archive = bool(archive)
 
-    @role.command(aliases=["join", "assign", ])
+        if archive and utils.bot_manager_role in [role.name for role in await group.roles]:
+            raise commands.BadArgument(f"Cannot archive role group **{group}**! Nope!")
+
+        await Role.filter(group=group).update(archived=archive)
+        await self.update_guilds_roles()
+        action = "Archived" if archive else "Unarchived"
+        await ctx.send(f"{action} role group **{group.name}** and all roles in that group", hidden=True)
+
+    @cog_ext.cog_subcommand(base="role", name="assign",
+                            options=[
+                                create_option(
+                                    name="role",
+                                    description="Role to assign",
+                                    option_type=discord.Role,
+                                    required=True,
+                                ),
+                                create_option(
+                                    name="member",
+                                    description="Member to assign role to",
+                                    option_type=discord.Member,
+                                    required=False,
+                                )
+                            ],
+                            guild_ids=guild_ids)
     @commands.guild_only()
-    async def add(self, ctx, *, roles_with_target: RolesWithTargetConverter()):
-        """Add (assign) specified role(s) to you or mentioned member"""
+    async def role_assign(self, ctx: SlashContext, role: discord.Role, member: discord.Member = None):
+        """Assign specified role to you or specified member"""
+        member = member or ctx.author
+        try:
+            db_role = await Role.get(name=role.name)
+        except exceptions.DoesNotExist:
+            raise commands.BadArgument(f"Role {role.mention} is not in bots database! "
+                                       f"You probably shouldn't use that role")
 
-        roles = roles_with_target.roles
-        target = roles_with_target.target
-
-        if target != ctx.author and not has_server_perms():
+        if (member != ctx.author or role.name == utils.bot_manager_role or not role.assignable) \
+                and not has_server_perms():
             # MissingPermissions expects an array of permissions
-            raise commands.MissingPermissions(["Server Manager"])
+            raise commands.MissingPermissions([utils.bot_manager_role])
 
-        role_names = [role.name for role in roles]
-        if "Bot manager" in role_names and not has_server_perms():
-            raise commands.MissingPermissions(["Server Manager"])
+        group = await db_role.group
+        if group.exclusive:
+            await self.remove_conflicting_roles(ctx, member, group)
 
-        # for group in set((await Role.get(name=role_name)).group for role_name in role_names):
-        async for group in RoleGroup.filter(roles__name__in=role_names).distinct():
-            if group.exclusive:
-                await self.remove_conflicting_roles(ctx, target, group)
-
-        await target.add_roles(*roles)
-        await ctx.send(f"Added {'role' if len(roles) == 1 else 'roles'} "
-                       f"{', '.join([role.mention for role in roles])} "
-                       f"to {target.mention}",
-                       allowed_mentions=discord.AllowedMentions.none()
+        await member.add_roles(role)
+        await ctx.send(f"Added role {role.mention} to {member.mention}",
+                       allowed_mentions=discord.AllowedMentions.none(),
+                       hidden=True
                        )
 
-    @role.command(aliases=["leave"] + CommandsAliases.remove_aliases)
-    @commands.guild_only()
-    async def remove(self, ctx, *, roles_with_target: RolesWithTargetConverter()):
-        """Remove specified role(s) from you or mentioned member"""
+    @cog_ext.cog_subcommand(base="role", name="unassign",
+                            options=[
+                                create_option(
+                                    name="role",
+                                    description="Role to remove",
+                                    option_type=discord.Role,
+                                    required=True,
+                                ),
+                                create_option(
+                                    name="member",
+                                    description="Member to remove role from",
+                                    option_type=discord.Member,
+                                    required=False,
+                                )
+                            ],
+                            guild_ids=guild_ids)
+    async def role_unassign(self, ctx: SlashContext, role: discord.Role, member: discord.Member = None):
+        """Remove specified role from you or specified member"""
+        member = member or ctx.author
 
-        roles = roles_with_target.roles
-        target = roles_with_target.target
-
-        if target != ctx.author and not has_server_perms():
+        if (member != ctx.author or not role.assignable) and not has_server_perms():
             # MissingPermissions expects an array of permissions
-            raise commands.MissingPermissions(["Server Manager"])
+            raise commands.MissingPermissions([utils.bot_manager_role])
 
-        await target.remove_roles(*roles)
-        mentions = [role.mention for role in roles]
-        await ctx.send(f"Removed {'role' if len(roles) == 1 else 'roles'} "
-                       f"{', '.join(mentions)} from {target.mention}",
-                       allowed_mentions=discord.AllowedMentions.none()
+        try:
+            db_role = await Role.get(name=role.name)
+        except exceptions.DoesNotExist:
+            raise commands.BadArgument(f"Role {role.mention} is not in bots database! "
+                                       f"You probably shouldn't touch that role")
+
+        await member.remove_roles(role)
+        await ctx.send(f"Removed role {role.mention} from {member.mention}",
+                       allowed_mentions=discord.AllowedMentions.none(),
+                       hidden=True
                        )
 
-    @role.command()
+    @cog_ext.cog_subcommand(base="role", name="add", guild_ids=guild_ids)
     @has_bot_perms()
-    async def new(self, ctx, name: str, group: RoleGroupConverter(),
-                  color: typing.Optional[discord.Colour] = discord.Color(0x000000)):
+    async def role_add(self, ctx: SlashContext, *args, **params):
         """Adds new role to internal DB and discord servers"""
-        if await Role.exists(name=name):
-            raise commands.BadArgument(f"Role '{name}' already exists")
 
-        await Role.create(name=name, color=color.value, group=group)
+        params = await db_utils.process(Role, params, fk_dict)
+        instance = await Role.create(**params)
+        await ctx.defer(hidden=True)
         await self.update_guilds_roles()
 
-        role = discord.utils.get(ctx.guild.roles, name=name)
-        await ctx.send(f"Created role {role.mention}", allowed_mentions=discord.AllowedMentions.none())
+        await ctx.send(f"Created role {self.get_role_repr(ctx, params['name'])} *(assignable={instance.assignable})*",
+                       allowed_mentions=discord.AllowedMentions.none(),
+                       hidden=True)
 
-    @role.command()
+        await self.update_options()
+
+    @cog_ext.cog_subcommand(base="role", name="remove",
+                            options=[
+                                create_option(
+                                    name="role",
+                                    description="Role name to remove",
+                                    option_type=str,
+                                    required=True,
+                                ),
+                            ],
+                            guild_ids=guild_ids)
     @has_bot_perms()
-    async def remove_from_db(self, ctx, role: DBRoleConverter()):
+    async def role_remove(self, ctx: SlashContext, role):
         """Completely removes role from internal DB"""
-        await self.archive(ctx, role, True)
+        role = (await db_utils.process(Role, {"role": role}, fk_dict))["role"]
+        if not role.archived:
+            raise commands.BadArgument("Role must be archived to be removed from internal DB")
+
         await role.delete()
-        await ctx.send(f"Successfully removed **{role.name}** from internal DB")
+        await ctx.send(f"Successfully removed **{role.name}** from internal DB", hidden=True)
+        await self.update_options()
 
-    @role.command(aliases=["refresh", "setup", ])
+    @cog_ext.cog_subcommand(base="role", name="sync", guild_ids=guild_ids)
     @has_bot_perms()
-    async def update(self, ctx):
-        """Updates roles on connected discord servers according to internal DB"""
+    async def role_sync(self, ctx: SlashContext):
+        """Updates roles and command options on connected discord servers according to internal DB"""
+        await ctx.defer(hidden=True)
         await self.update_guilds_roles()
-        await ctx.send("Updated all guilds roles in accordance with internal DB")
+        await self.update_options()
+        await ctx.send("Updated all guilds roles in accordance with internal DB", hidden=True)
 
-    @role.command()
+    @cog_ext.cog_subcommand(base="role", name="edit", guild_ids=guild_ids)
     @has_bot_perms()
     @atomic()
-    async def edit(self, ctx, role: DBRoleConverter(), *, params):
-        """
-        Edits specified role
-        Specify params like this: name="New name" color=#00FF00 group="Group name" priority=3 archived=False
-        You are free to use any combinations of params
-        Use quotation for space-separated names\strings
-        """
-        converter = ParamConverter({"name": convert_ensure_unique(Role),
-                                    "color": ColorValueConverter(), "group": RoleGroupConverter(),
-                                    "priority": convert_to_int, "archived": convert_to_bool})
-        converted = await converter.convert(ctx, params)
-        converted_msg = converted.copy()
+    async def role_edit(self, ctx: SlashContext, *args, **params):
+        """Edits specified role"""
+        params = await db_utils.process(Role, params, fk_dict)
+        role = params.pop("role")
 
-        if "priority" in converted:
-            number = converted.pop("priority")
-            await reshuffle(Role, role, number)
-            converted["number"] = number
+        if "archived" in params and role.name == utils.bot_manager_role and params["archive"]:
+            raise commands.MissingPermissions(["I won't archive Bot manager role, lol. Nope."])
 
         old_name = role.name
-        role = role.update_from_dict(converted)
+        role = role.update_from_dict(params)
         await role.save()
+        await ctx.defer()
 
-        if "name" in converted:
+        if "name" in params:
             await self.rename_guilds_roles(old_name, role.name)
         await self.update_guilds_roles()
 
         await ctx.send(f"Updated role {self.get_role_repr(ctx, role.name)} with new parameters: "
-                       f"*{', '.join([f'{key}={value}' for key, value in converted_msg.items()])}*",
-                       allowed_mentions=discord.AllowedMentions.none())
+                       f"{utils.format_params(params)}",
+                       allowed_mentions=discord.AllowedMentions.none(),
+                       hidden=True)
+        await self.update_options()
 
-    @role.command()
-    @has_bot_perms()
-    async def archive(self, ctx, role: DBRoleConverter(), archive: typing.Optional[bool] = True):
-        """Archives role to server network database, deletes it from discord servers"""
-        if role.name == "Bot manager" and archive:
-            raise commands.MissingPermissions(["I won't delete Bot manager role, lol. Nope."])
-
-        role.archived = archive
-        await role.save()
-        await self.update_guilds_roles()
-        await ctx.send(f"Archived role **{role.name}**")
-
-    @commands.command(aliases=["sider", ])
-    async def side(self, ctx, *, role_arg: str):
+    @cog_ext.cog_subcommand(base="side", name="join",
+                            options=[
+                                create_option(
+                                    name="side",
+                                    description="Pick side to join",
+                                    option_type=int,
+                                    required=True,
+                                ),
+                            ],
+                            guild_ids=guild_ids)
+    async def side_join(self, ctx: SlashContext, side):
         """Choose your Sider role!"""
-        try:
-            group = await RoleGroup.get(name="Sider")
-        except tortoise.exceptions.DoesNotExist:
-            raise commands.CheckFailure("Sorry, but this command is unavailable as there is no **Sider** role group.")
+        if self._sider_group is None:
+            raise commands.CheckFailure(
+                "Sorry, but this command is unavailable as there is no **Sider** role group yet.")
 
         member = ctx.author
+        group = self._sider_group
 
-        no_options = ["leave", "clear", "delete", "remove", "yeet", "no", "none", "noside", "nosider", "human"]
-
-        options = await Role.filter(group=group, archived=False).values_list("name", flat=True)
-        options.extend(no_options)
-        pick = fuzzy_search(role_arg, options)
-
-        if pick in no_options:
+        if side == -1:
             await self.remove_conflicting_roles(ctx, member, group)
             await ctx.send("You're a *noside* now! Is that what you wanted?")
             return
 
-        db_role = await DBRoleConverter().convert(ctx, pick)
-        if (await db_role.group).pk != group.pk:
-            raise commands.CheckFailure("Sorry, but this is not **Sider** role.")
-
-        previous_roles = await Role.filter(group=group, name__in=[role.name for role in member.roles]). \
-            values_list("name", flat=True)
+        role_names = [role.name for role in member.roles]
+        previous_roles = await Role.filter(group=group, name__in=role_names).values_list("name", flat=True)
         await self.remove_conflicting_roles(ctx, member, group)
 
-        role = await DiscordRoleConverter().convert(ctx, db_role.name)
+        side = await Role.get(id=side)
+        try:
+            role = await commands.RoleConverter().convert(ctx, side.name)
+        except commands.RoleNotFound:
+            raise commands.BadArgument(f"Sorry, but there is no role for **{side.name}** on this server yet")
         await member.add_roles(role)
 
         if "Nixside" in previous_roles and role.name == "Drakeside":
-            await ctx.send("You know, Ziva, you can't really learn drakeside boxsignal this way!")
+            message = "You know, Ziva, you can't really learn drakeside boxsignal this way!"
         elif role.name == "Simurgh":
-            await ctx.send("THE SIMURGH\nIS HERE")
+            message = "THE SIMURGH\nIS HERE"
         elif role.name == "Spaceside":
-            await ctx.send("/-//-/- /-//-/ //-/-/-/-")
+            message = "/-//-/- /-//-/ //-/-/-/-"
         elif role.name == "Zalside":
-            await ctx.send("Splish-splash!")
+            message = "Splish-splash!"
         else:
-            await ctx.send(f"You're a **{role.name}** now!")
+            message = f"You're a **{role.name}** now!"
+        await ctx.send(message, hidden=True)
+
+
+def setup(bot):
+    bot.add_cog(Roles(bot))

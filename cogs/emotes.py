@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 from pathlib import Path
 
 from cogs.cog_utils import fuzzy_search, abs_join, send_file
-import cogs.permissions as permissions
+from cogs.permissions import has_server_perms, has_bot_perms
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +117,7 @@ class Emotes(commands.Cog):
 
                             ],
                             guild_ids=guild_ids)
-    @permissions.has_bot_perms()
+    @has_bot_perms()
     async def emote_add(self, ctx, name, attachment_link):
         """Adds new emote. Will replace old emote with same name."""
         ext = Path(urlparse(attachment_link).path).suffix
@@ -154,7 +154,7 @@ class Emotes(commands.Cog):
                                 ),
                             ],
                             guild_ids=guild_ids)
-    @permissions.has_bot_perms()
+    @has_bot_perms()
     async def emote_remove(self, ctx, name):
         """
         Removes existing emote.

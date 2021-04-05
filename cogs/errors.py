@@ -26,9 +26,10 @@ class Errors(commands.Cog):
         elif isinstance(error, commands.NoPrivateMessage):
             message = "You can use that only in guild!"
         else:
-            logger.error(f"Error {type(error)} occurred: {error} (in result of {ctx.message.content})")
-            await ctx.send(f"{(await ctx.bot.fetch_user(246333265495982080)).mention} come and fix me!")
-            await send_file(ctx.channel, abs_join("misc", "code.jpg"), "code.jpg")
+            logger.error(f"Error {type(error)} occurred: {error}")
+            await ctx.channel.send(f"Unexpected error! "
+                                   f"{(await ctx.bot.fetch_user(246333265495982080)).mention} come and fix me!")
+            # await send_file(ctx.channel, abs_join("misc", "code.jpg"), "code.jpg")
             return
 
         await ctx.send(message, hidden=True)

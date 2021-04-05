@@ -14,6 +14,33 @@ from fuzzywuzzy import fuzz
 
 
 embed_color = 0x72a3f2
+bot_manager_role = "Bot manager"
+
+
+class StartupCog(commands.Cog):
+    def __init__(self):
+        self._first_ready = True
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        if self._first_ready:
+            self._first_ready = False
+            await self.on_startup()
+
+    async def on_startup(self):
+        pass
+
+
+def convert_args(command, args, kwargs):
+    options = command.options
+    arg_to_kwarg = {k["name"]: v for k, v in zip(options, args)}
+    arg_to_kwarg.update(kwargs)
+    print(command, args, kwargs, arg_to_kwarg)
+    return arg_to_kwarg
+
+
+def format_params(params):
+    return f"*{', '.join([f'{key}={value}' for key, value in params.items()])}*"
 
 
 def fuzzy_search(query, choices, score_cutoff=50):
@@ -40,15 +67,6 @@ def url_hostname(url):
     return url.split("//")[-1].split("/")[0].split('?')[0]
 
 
-def next_number(cls_name, field="number"):
-    def inner():
-        loop = asyncio.get_event_loop()
-        cls = inspect.stack()[3][0].f_globals[cls_name]
-        max_number = loop.run_until_complete(cls.annotate(m=Max(field)).values_list("m", flat=True))[0]
-        return max_number + 1 if max_number is not None else 0
-    return inner
-
-
 def can_bot_respond(bot: discord.ext.commands.Bot, channel: discord.TextChannel):
     """Checks, can a bot send messages to this channel"""
     if bot is None or channel is None:
@@ -57,15 +75,3 @@ def can_bot_respond(bot: discord.ext.commands.Bot, channel: discord.TextChannel)
     bot_as_member = channel.guild.get_member(bot.user.id)
     permissions = channel.permissions_for(bot_as_member)
     return permissions.send_messages
-
-
-# if __name__ == "__main__":
-#     pass
-    # r = fuzzy_search(
-    #     "https://discordpy.readthedocs.io/en/attachment/faq.html#how-do-i-use-a-local-image-file-for-an-embed-image",
-    #     ["attachment", "file_attached"], score_cutoff=80)
-    # print(r)
-    # l = ["help", "me", "please", "zalside"]
-    # print(fuzzy_search("pls", l))
-    # print(fuzzy_search("zlolsider", l))
-
