@@ -1,6 +1,7 @@
 nest_asyncio
 tortoise-orm[aiomysql]
 discord.py
+discord-py-slash-command
 python-dateutil
 fuzzywuzzy[speedup]
 requests
