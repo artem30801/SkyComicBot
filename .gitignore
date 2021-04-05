@@ -6,6 +6,7 @@ last_startup
 
 *.ini
 *.log
+*.json
 
 # IDE files
 .vscode/
