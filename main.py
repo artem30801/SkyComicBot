@@ -15,10 +15,13 @@ from discord.ext import commands
 from discord_slash import SlashCommand
 
 import cogs.cog_utils as utils
+from utils import DBLogger
 
 # from cogs.comics import Comics
 # from cogs.converters import Conversions
 
+logging.setLoggerClass(DBLogger)
+logging.basicConfig(level=logging.INFO, format="[%(asctime)s] [%(levelname)-8.8s]-[%(name)-15.15s]: %(message)s")
 nest_asyncio.apply()
 
 

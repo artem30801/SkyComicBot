@@ -16,6 +16,7 @@ from fuzzywuzzy import fuzz
 embed_color = 0x72a3f2
 bot_manager_role = "Bot manager"
 stream_crew_role = "livestream crew"
+db_log_level = 25
 
 
 class StartupCog(commands.Cog):
@@ -30,6 +31,16 @@ class StartupCog(commands.Cog):
 
     async def on_startup(self):
         pass
+
+
+class DBLogger(logging.getLoggerClass()):
+    def __init__(self, name, level=logging.NOTSET):
+        super().__init__(name, level)
+        logging.addLevelName(db_log_level, "DATABASE")
+    
+    def db(self, msg, *args, **kwargs):
+        if self.isEnabledFor(db_log_level):
+            self._log(db_log_level, msg, args, **kwargs)
 
 
 def convert_args(command, args, kwargs):
