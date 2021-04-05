@@ -522,7 +522,8 @@ class Roles(utils.StartupCog):
 
         side = await Role.get(id=side)
         if side.name in role_names:
-            await ctx.send(f"Aren't you already a {side.name}, {member.display_name}?")
+            await ctx.send(f"Aren't you already a {side.name}, {member.display_name}?"
+            return
 
         await self.remove_conflicting_roles(ctx, member, group)
 
