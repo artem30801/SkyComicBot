@@ -178,6 +178,9 @@ class Roles(utils.StartupCog):
 
         member = member or ctx.author
         mention = member.mention if member != ctx.author else "You"
+
+        logger.debug(f"{ctx.author} checked {member} roles")
+
         if len(member.roles) <= 1:
             role_text = "don't have any roles"
         else:
@@ -190,7 +193,9 @@ class Roles(utils.StartupCog):
 
     @cog_ext.cog_subcommand(base="role", name="list", guild_ids=guild_ids)
     async def role_list(self, ctx: SlashContext):
-        """Shows list of all available roles .Roles are grouped by role group"""
+        """Shows list of all available roles. Roles are grouped by role group"""
+        logger.debug(f"{ctx.author} listed roles")
+
         embed = discord.Embed(title="Available roles:", color=utils.embed_color)
         db_groups = await RoleGroup.all()
         for group in db_groups:
@@ -208,6 +213,8 @@ class Roles(utils.StartupCog):
     @has_server_perms()
     async def list_db(self, ctx: SlashContext):
         """Shows list of roles in internal DB with additional data"""
+        logger.debug(f"{ctx.author} checked roles database")
+        
         db_roles = await Role.all()
         role_mentions = [f"{self.get_role_repr(ctx, role.name)} "
                          f"*(color={role.color}, archived={role.archived}, "
@@ -228,7 +235,11 @@ class Roles(utils.StartupCog):
                             guild_ids=guild_ids)
     async def group_info(self, ctx: SlashContext, group):
         """Shows info about specified group"""
+        logger.debug(f"{ctx.author} checked group with ID '{group}'")
+        
         group = await RoleGroup.get(id=group)
+        logger.debug(f"Group '{group.id}' is '{group.name}'")
+
         embed = discord.Embed(title=group.name, color=utils.embed_color)
         db_roles = await group.roles
 
@@ -244,6 +255,7 @@ class Roles(utils.StartupCog):
     @cog_ext.cog_subcommand(base="role", subcommand_group="group", name="list", guild_ids=guild_ids)
     async def group_list(self, ctx: SlashContext):
         """Shows a list of role groups with additional data"""
+        logger.debug(f"{ctx.author} listed role groups")
 
         async def display_group(group):
             state = await self.get_group_state(group)
@@ -262,9 +274,13 @@ class Roles(utils.StartupCog):
     @has_bot_perms()
     async def group_add(self, ctx: SlashContext, *args, **params):
         """Adds new role group to internal DB"""
+        logger.db(f"{ctx.author} trying to add group with args '{args}' and params '{params}'")
+
         # params = utils.convert_args(self.group_add, args, params)
         params = await db_utils.process(RoleGroup, params, fk_dict)
         instance = await RoleGroup.create(**params)
+        logger.db(f"{ctx.author} added group '{instance.name}'")
+
         await ctx.send(f"Successfully added role group **{instance.name}** *(exclusive={instance.exclusive})*",
                        hidden=True)
         await self.update_options()
@@ -282,13 +298,18 @@ class Roles(utils.StartupCog):
     @has_bot_perms()
     async def group_remove(self, ctx: SlashContext, group):
         """Removes specified group from internal DB"""
+        logger.db(f"{ctx.author} trying to remove group with ID '{group}'")
+
         group = await RoleGroup.get(id=group)
         name = group.name
+        logger.db(f"Group {group.id} is '{name}'")
+
         if await self.get_group_state(group) not in (RoleGroupStates.archived, RoleGroupStates.empty):
+            logger.db(f"Failed to remove group {name}")
             raise commands.BadArgument(f"Cannot delete role group **{name}**! "
                                        f"Archive all roles in the role group or move them to other groups!")
         await group.delete()
-        logger.warning(f"User {ctx.author.name}/{ctx.author.mention} (from {ctx.guild}) removed role group {name}")
+        logger.db(f"{ctx.author} (from {ctx.guild}) removed role group {name}")
         await ctx.send(f"Successfully removed role group **{name}**", hidden=True)
         await self.update_options()
 
@@ -297,12 +318,18 @@ class Roles(utils.StartupCog):
     @atomic()
     async def group_edit(self, ctx: SlashContext, *args, **params):
         """Edits specified role group"""
+        logger.db(f"{ctx.author} trying to edit group with args '{args}' and params '{params}")
+
         params = await db_utils.process(RoleGroup, params, fk_dict)
         group = params.pop("group")
 
         old_name = group.name
+        logger.db(f"Group {group.id} is '{old_name}'")
+        
         group = group.update_from_dict(params)
         await group.save()
+        logger.db(f"Edited group {old_name} (args '{args}', params '{params}')")
+
         await ctx.send(f"Updated role group **{old_name}** with new parameters: "
                        f"{utils.format_params(params)}",
                        hidden=True)
@@ -329,16 +356,21 @@ class Roles(utils.StartupCog):
     @has_bot_perms()
     async def group_archive(self, ctx: SlashContext, group, archive: bool = True):
         """Archives or unarchives all roles in specified group"""
+        logger.db(f"{ctx.author} trying to archive group with ID '{group}'")
+
         await ctx.defer(True)
         group = await RoleGroup.get(id=group)
         archive = bool(archive)
+        logger.db(f"Group {group.id} is '{group.name}'")
 
         if archive and utils.bot_manager_role in [role.name for role in await group.roles]:
-            raise commands.BadArgument(f"Cannot archive role group **{group}**! Nope!")
+            logger.warn(f"Failed to archive group '{group.name}'")
+            raise commands.BadArgument(f"Cannot archive role group **{group.name}**! Nope!")
 
         await Role.filter(group=group).update(archived=archive)
         await self.update_guilds_roles()
         action = "Archived" if archive else "Unarchived"
+        logger.db(f"Successfully {action.lower()} role group {group.name}")
         await ctx.send(f"{action} role group **{group.name}** and all roles in that group", hidden=True)
 
     @cog_ext.cog_subcommand(base="role", name="assign",
@@ -361,22 +393,28 @@ class Roles(utils.StartupCog):
     async def role_assign(self, ctx: SlashContext, role: discord.Role, member: discord.Member = None):
         """Assign specified role to you or specified member"""
         member = member or ctx.author
+        logger.info(f"{ctx.author} trying to assign '{role}' to {member}")
+
         try:
             db_role = await Role.get(name=role.name)
         except exceptions.DoesNotExist:
+            logger.warn(f"Role with name '{role}'' not found in database")
             raise commands.BadArgument(f"Role {role.mention} is not in bots database! "
                                        f"You probably shouldn't use that role")
 
         if (member != ctx.author or db_role.name == utils.bot_manager_role or not db_role.assignable) \
                 and not has_server_perms():
             # MissingPermissions expects an array of permissions
+            logger.info(f"{ctx.author} don't have permissions to assign '{role}' to {member}")
             raise commands.MissingPermissions([utils.bot_manager_role])
 
         group = await db_role.group
         if group.exclusive:
+            logger.info(f"Removing roles, conflicting with {role}")
             await self.remove_conflicting_roles(ctx, member, group)
 
         await member.add_roles(role)
+        logger.info(f"Assigned role '{role}' to {member}")
         await ctx.send(f"Added role {role.mention} to {member.mention}",
                        allowed_mentions=discord.AllowedMentions.none(),
                        hidden=True
@@ -401,18 +439,22 @@ class Roles(utils.StartupCog):
     async def role_unassign(self, ctx: SlashContext, role: discord.Role, member: discord.Member = None):
         """Remove specified role from you or specified member"""
         member = member or ctx.author
+        logger.info(f"{ctx.author} trying to remove role '{role}' from {member}")
 
         try:
             db_role = await Role.get(name=role.name)
         except exceptions.DoesNotExist:
-            raise commands.BadArgument(f"Role {role.mention} is not in bots database! "
+            logger.warn(f"Role with name '{role.name}' not found in database")
+            raise commands.BadArgument(f"Role {role.mention} is not in bots database!"
                                        f"You probably shouldn't touch that role")
 
         if (member != ctx.author or not db_role.assignable) and not has_server_perms():
+            logger.info(f"{ctx.author} don't have permissions to remove '{role}' from {member}")
             # MissingPermissions expects an array of permissions
             raise commands.MissingPermissions([utils.bot_manager_role])
 
         await member.remove_roles(role)
+        logger.info(f"Removed role '{role}' from {member}")
         await ctx.send(f"Removed role {role.mention} from {member.mention}",
                        allowed_mentions=discord.AllowedMentions.none(),
                        hidden=True
@@ -422,12 +464,14 @@ class Roles(utils.StartupCog):
     @has_bot_perms()
     async def role_add(self, ctx: SlashContext, *args, **params):
         """Adds new role to internal DB and discord servers"""
+        logger.db(f"{ctx.author} trying to add role with args '{args}' and params '{params}'")
 
         params = await db_utils.process(Role, params, fk_dict)
         instance = await Role.create(**params)
         await ctx.defer(hidden=True)
         await self.update_guilds_roles()
 
+        logger.db(f"{ctx.author} added role '{instance.name}' with args '{args}' and params '{params}'")
         await ctx.send(f"Created role {self.get_role_repr(ctx, params['name'])} *(assignable={instance.assignable})*",
                        allowed_mentions=discord.AllowedMentions.none(),
                        hidden=True)
@@ -447,11 +491,15 @@ class Roles(utils.StartupCog):
     @has_bot_perms()
     async def role_delete(self, ctx: SlashContext, role):
         """Completely removes role from internal DB"""
+        logger.db(f"{ctx.author} trying to remove role '{role}'")
+        
         role = (await db_utils.process(Role, {"role": role}, fk_dict))["role"]
         if not role.archived:
+            logger.warn(f"Can't remove role '{role.name}', it is not archived!")
             raise commands.BadArgument("Role must be archived to be removed from internal DB")
 
         await role.delete()
+        logger.db(f"{ctx.author} removed role '{role.name}'")
         await ctx.send(f"Successfully removed **{role.name}** from internal DB", hidden=True)
         await self.update_options()
 
@@ -459,6 +507,7 @@ class Roles(utils.StartupCog):
     @has_bot_perms()
     async def role_sync(self, ctx: SlashContext):
         """Updates roles and command options on connected discord servers according to internal DB"""
+        logger.debug(f"{ctx.author} updated roles and options")
         await ctx.defer(hidden=True)
         await self.update_guilds_roles()
         await self.update_options()
@@ -469,10 +518,13 @@ class Roles(utils.StartupCog):
     @atomic()
     async def role_edit(self, ctx: SlashContext, *args, **params):
         """Edits specified role"""
+        logger.db(f"{ctx.author} trying to edit role with args '{args}' and params '{params}'")
+        
         params = await db_utils.process(Role, params, fk_dict)
         role = params.pop("role")
 
         if "archived" in params and role.name == utils.bot_manager_role and params["archive"]:
+            logger.warn("Trying to archive bot manager role")
             raise commands.MissingPermissions(["I won't archive Bot manager role, lol. Nope."])
 
         old_name = role.name
@@ -483,6 +535,8 @@ class Roles(utils.StartupCog):
         if "name" in params:
             await self.rename_guilds_roles(old_name, role.name)
         await self.update_guilds_roles()
+
+        logger.db(f"Edited role '{old_name}'' (args '{args}', params '{params}')")
 
         await ctx.send(f"Updated role {self.get_role_repr(ctx, role.name)} with new parameters: "
                        f"{utils.format_params(params)}",
@@ -502,7 +556,9 @@ class Roles(utils.StartupCog):
                             guild_ids=guild_ids)
     async def side_join(self, ctx: SlashContext, side):
         """Choose your Sider role!"""
+        logger.info(f"{ctx.author} trying to join side with ID {side}")
         if self._sider_group is None:
+            logger.warn("Sider group is empty")
             raise commands.CheckFailure(
                 "Sorry, but this command is unavailable as there is no **Sider** role group yet.")
 
@@ -514,14 +570,19 @@ class Roles(utils.StartupCog):
 
         if side == -1:
             if not previous_roles:
+                logger.info(f"{member} don't have a side role")
                 await ctx.send("But... you're already a noside, isn't you?")
             else:
                 await self.remove_conflicting_roles(ctx, member, group)
+                logger.info(f"Removed sider role from {member}")
                 await ctx.send("You're a *noside* now! Is that what you wanted?")
             return
 
         side = await Role.get(id=side)
+        logger.info(f"Side with ID {side.id} is '{side.name}'")
+
         if side.name in role_names:
+            logger.info(f"{member} already have this side role")
             await ctx.send(f"Aren't you already a {side.name}, {member.display_name}?")
             return
 
@@ -530,6 +591,7 @@ class Roles(utils.StartupCog):
         try:
             role = await commands.RoleConverter().convert(ctx, side.name)
         except commands.RoleNotFound:
+            logger.warn(f"Role with name '{side.name}'' not found")
             raise commands.BadArgument(f"Sorry, but there is no role for **{side.name}** on this server yet")
         await member.add_roles(role)
 
@@ -543,6 +605,8 @@ class Roles(utils.StartupCog):
             message = "Splish-splash!"
         else:
             message = f"You're a **{role.name}** now!"
+        
+        logger.info(f"{member} joined side '{role.name}'")
         await ctx.send(message)
 
     @cog_ext.cog_subcommand(base="side", name="leave", guild_ids=guild_ids)
@@ -552,14 +616,18 @@ class Roles(utils.StartupCog):
     @cog_ext.cog_subcommand(base="livestream_crew", name="join", options=[], guild_ids=guild_ids)
     async def streamcrew_join(self, ctx: SlashContext, join=True):
         """Receive 'livestream crew' role to get pings when LynxGriffin is streaming!"""
+        logger.info(f"{ctx.author} trying to {'join' if join else 'leave'} streamcrew")
+
         try:
             db_role = await Role.get(name=utils.stream_crew_role)
         except exceptions.DoesNotExist:
+            logger.warn(f"Can't find a role with name '{utils.stream_crew_role}' in the DB")
             raise commands.CheckFailure(
                 f"Sorry, but this command is unavailable as there is no **{utils.stream_crew_role}** role in DB.")
         try:
             role = await commands.RoleConverter().convert(ctx, db_role.name)
         except commands.RoleNotFound:
+            logger.warn(f"Role with name '{utils.stream_crew_role}' in not a valid role for {ctx.guild}")
             raise commands.CheckFailure(
                 f"Sorry, but this command is unavailable as there is no **{utils.stream_crew_role}** role "
                 f"on this server yet.")
@@ -567,15 +635,19 @@ class Roles(utils.StartupCog):
         member = ctx.author
         if join:
             if role in member.roles:
+                logger.info(f"{ctx.author} already in streamcrew")
                 await ctx.send(f"Do you need **more** pings, {member.mention}? You're already in livestream crew")
             else:
                 await member.add_roles(role)
+                logger.info(f"{ctx.author} joined streamcrew")
                 await ctx.send("Welcome to the livestream crew! Enjoy your pings ;)")
         else:
             if role not in member.roles:
+                logger.info(f"{ctx.author} is not in streamcrew")
                 await ctx.send("You're not in the livestream crew? Never have been 🔫")
             else:
                 await member.remove_roles(role)
+                logger.info(f"{ctx.author} left streamcrew")
                 await ctx.send("Goodbye o7")
 
     @cog_ext.cog_subcommand(base="livestream_crew", name="leave", guild_ids=guild_ids)
