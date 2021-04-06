@@ -87,7 +87,7 @@ class Emotes(utils.AutoLogCog):
                             ],
                             guild_ids=guild_ids)
     async def emote_pick(self, ctx, emote):
-        """Sends an emote image. Pick emote name from picker to send"""
+        """Sends an emote image. Pick emote name from picker to send (only first 25 will be shown)"""
         await self._send_emote(ctx, emote)
 
     async def _send_emote(self, ctx, emote):
@@ -122,11 +122,15 @@ class Emotes(utils.AutoLogCog):
     @has_bot_perms()
     async def emote_add(self, ctx, name, attachment_link):
         """Adds new emote. Will replace old emote with same name."""
+        logger.important(f"{ctx.author} trying to add emote '{name}' (image link - {attachment_link})")
+
         ext = Path(urlparse(attachment_link).path).suffix
         if ext not in image_exts:
+            logger.info(f"Unsupported image extension '{ext}'")
             raise commands.BadArgument(f"File extension ({ext}) should be one of ({', '.join(image_exts)})")
 
         if not re.fullmatch("[A-z\\s]+", name):
+            logger.info(f"Unsupported image name '{name}'")
             raise commands.BadArgument(
                 "Emote name should contain only english letters, whitespaces and underscores!")
         filename = f"{name.strip().replace(' ', '_')}{ext}"
@@ -141,8 +145,10 @@ class Emotes(utils.AutoLogCog):
 
         with open(abs_join("emotes", filename), 'wb') as f:
             f.write(attachment)
+        logger.important(f"Saved emote '{name}' as '{filename}'")
 
         self.load_emotes()
+        logger.important(f"Emote '{name}' successfully added")
         await ctx.send(f"Successfully added emote **{fuzzy_search(filename, self.emotes.keys())}**.")
 
     @cog_ext.cog_subcommand(base="emote", name="remove",
@@ -157,13 +163,16 @@ class Emotes(utils.AutoLogCog):
                             guild_ids=guild_ids)
     @has_bot_perms()
     async def emote_remove(self, ctx, name):
-        """
-        Removes existing emote.
-        """
+        """Removes existing emote."""
+        logger.important(f"{ctx.author} trying to remove emote '{name}'")
+
         ctx.cog = self
         emote = await EmoteConverter().convert(ctx, name)
         os.remove(self.emotes[emote])
+        logger.important(f"Removed emote '{emote}' file '{self.emotes[emote]}'")
+
         self.load_emotes()
+        logger.important(f"Emote '{name}' successfully removed")
         await ctx.send(f"Successfully removed emote **{emote}**.")
 
 
