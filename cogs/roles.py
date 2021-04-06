@@ -466,9 +466,9 @@ class Roles(utils.StartupCog):
         """Adds new role to internal DB and discord servers"""
         logger.db(f"{ctx.author} trying to add role with args '{args}' and params '{params}'")
 
+        await ctx.defer(hidden=True)
         params = await db_utils.process(Role, params, fk_dict)
         instance = await Role.create(**params)
-        await ctx.defer(hidden=True)
         await self.update_guilds_roles()
 
         logger.db(f"{ctx.author} added role '{instance.name}' with args '{args}' and params '{params}'")
@@ -520,6 +520,7 @@ class Roles(utils.StartupCog):
         """Edits specified role"""
         logger.db(f"{ctx.author} trying to edit role with args '{args}' and params '{params}'")
         
+        # await ctx.defer(hidden=True)
         params = await db_utils.process(Role, params, fk_dict)
         role = params.pop("role")
 
@@ -530,7 +531,6 @@ class Roles(utils.StartupCog):
         old_name = role.name
         role = role.update_from_dict(params)
         await role.save()
-        await ctx.defer()
 
         if "name" in params:
             await self.rename_guilds_roles(old_name, role.name)
