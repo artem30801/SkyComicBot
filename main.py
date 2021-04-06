@@ -53,7 +53,7 @@ async def main():
 
     logging.basicConfig(
         level=logging.DEBUG,
-        format="[%(asctime)s] [%(levelname)-8.8s]-[%(name)-15.15s]: %(message)s",
+        format="[%(asctime)s] [%(levelname)-9.9s]-[%(name)-15.15s]: %(message)s",
         handlers=log_handlers
     )
     logging.getLogger("tortoise").setLevel(logging.INFO)
