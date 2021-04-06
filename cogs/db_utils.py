@@ -83,7 +83,6 @@ async def generate_db_choices(fk_model):
     if use_choices:
         choices = [create_choice(name=instance.name, value=instance.id)
                    for instance in await fk_model.all()]
-        print(choices)
         return choices
     return None
 
@@ -165,7 +164,6 @@ class ModelConverter(commands.Converter):
         try:
             value = int(argument)
         except ValueError:
-            print(self.use_name, "name")
             if self.use_name:
                 return await self.convert_name(argument)
         else:

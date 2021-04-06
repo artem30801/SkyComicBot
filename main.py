@@ -15,13 +15,10 @@ from discord.ext import commands
 from discord_slash import SlashCommand
 
 import cogs.cog_utils as utils
-from utils import DBLogger
 
 # from cogs.comics import Comics
 # from cogs.converters import Conversions
 
-logging.setLoggerClass(DBLogger)
-logging.basicConfig(level=logging.INFO, format="[%(asctime)s] [%(levelname)-8.8s]-[%(name)-15.15s]: %(message)s")
 nest_asyncio.apply()
 
 
@@ -72,11 +69,20 @@ if __name__ == '__main__':
     current_dir = os.path.dirname(os.path.realpath(__file__))
     now = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     utils.ensure_dir(utils.abs_join(current_dir, "logs"))
-    logging.basicConfig(level=logging.INFO, format="[%(asctime)s] [%(levelname)-7.7s]-[%(name)-15.15s]: %(message)s",
+
+    logging.setLoggerClass(utils.DBLogger)
+    logging.basicConfig(level=logging.DEBUG, format="[%(asctime)s] [%(levelname)-8.8s]-[%(name)-15.15s]: %(message)s",
                         handlers=[
                             logging.FileHandler(utils.abs_join(current_dir, "logs", f"{now}.log")),
                             logging.StreamHandler(),
 
                         ])
+    logging.getLogger("tortoise").setLevel(logging.INFO)
+    logging.getLogger("db_client").setLevel(logging.INFO)
+    logging.getLogger("aiomysql").setLevel(logging.INFO)
+    logging.getLogger("discord.client").setLevel(logging.CRITICAL)
+    logging.getLogger("discord.gateway").setLevel(logging.ERROR)
+    logging.getLogger("discord.http").setLevel(logging.ERROR)
+
     loop = asyncio.get_event_loop()
     loop.run_until_complete(main())

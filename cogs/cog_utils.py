@@ -2,25 +2,59 @@ import logging
 
 import discord
 from discord.ext import commands
-
-from tortoise.functions import Max
+from discord_slash import cog_ext, SlashContext
 
 import os
 import asyncio
-import inspect
 
 from fuzzywuzzy import process
 from fuzzywuzzy import fuzz
-
 
 embed_color = 0x72a3f2
 bot_manager_role = "Bot manager"
 stream_crew_role = "livestream crew"
 db_log_level = 25
+important_log_level = 29
+
+
+class AutoLogCog(commands.Cog):
+    def __init__(self, logger, *args, **kwargs):
+        self.logger = logger
+        print(self, logger)
+
+    @staticmethod
+    def format_stack(*args):
+        return ">".join([str(arg) for arg in args if arg is not None])
+
+    @classmethod
+    def format_caller(cls, ctx):
+        return cls.format_stack(ctx.guild, ctx.channel, ctx.author)
+
+    @classmethod
+    def format_command(cls, ctx):
+        return cls.format_stack(ctx.command, ctx.subcommand_group, ctx.subcommand_name)
+
+    @commands.Cog.listener()
+    async def on_slash_command(self, ctx: SlashContext):
+        command = self.bot.slash.commands[ctx.command]
+        if command.cog is not self:
+            return
+
+        self.logger.debug(f"{self.format_caller(ctx)} invoked command "
+                          f"{self.format_command(ctx)}")
+
+    @commands.Cog.listener()
+    async def on_slash_command_error(self, ctx: SlashContext, error):
+        command = self.bot.slash.commands[ctx.command]
+        if command.cog is not self:
+            return
+
+        self.logger.warning(f"{self.format_caller(ctx)} caused exception in command "
+                            f"{self.format_command(ctx)}: {repr(error)}")
 
 
 class StartupCog(commands.Cog):
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
         self._first_ready = True
 
     @commands.Cog.listener()
@@ -37,18 +71,15 @@ class DBLogger(logging.getLoggerClass()):
     def __init__(self, name, level=logging.NOTSET):
         super().__init__(name, level)
         logging.addLevelName(db_log_level, "DATABASE")
-    
+        logging.addLevelName(important_log_level, "IMPORTANT")
+
     def db(self, msg, *args, **kwargs):
         if self.isEnabledFor(db_log_level):
             self._log(db_log_level, msg, args, **kwargs)
 
-
-def convert_args(command, args, kwargs):
-    options = command.options
-    arg_to_kwarg = {k["name"]: v for k, v in zip(options, args)}
-    arg_to_kwarg.update(kwargs)
-    print(command, args, kwargs, arg_to_kwarg)
-    return arg_to_kwarg
+    def important(self, msg, *args, **kwargs):
+        if self.isEnabledFor(important_log_level):
+            self._log(important_log_level, msg, args, **kwargs)
 
 
 def format_params(params):

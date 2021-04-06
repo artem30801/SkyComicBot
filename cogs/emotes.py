@@ -39,11 +39,12 @@ class EmoteConverter(commands.Converter):
         return key
 
 
-class Emotes(commands.Cog):
+class Emotes(utils.AutoLogCog):
     """Emote pictures sending and managing"""
 
     # :griffin_hug:
     def __init__(self, bot):
+        utils.AutoLogCog.__init__(self, logger)
         self.bot = bot
         self.emotes = dict()
         self.load_emotes()
@@ -57,7 +58,7 @@ class Emotes(commands.Cog):
 
         self.emote_pick.options[0]["choices"] = [create_choice(name=key, value=key) for key in self.emotes.keys()][:25]
 
-        logging.debug(f"Loaded emotes: {self.emotes}")
+        logger.debug(f"Loaded emotes: {self.emotes}")
 
     @cog_ext.cog_subcommand(base="emote", name="send",
                             options=[

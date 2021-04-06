@@ -42,31 +42,25 @@ class HomeChannels(Model):
 guild_ids = [570257083040137237, 568072142843936778]  # TODO REMOVE
 
 
-class Greetings(commands.Cog):
+class Greetings(utils.AutoLogCog, utils.StartupCog):
     """Simple greetings and welcome commands"""
 
     startup_file_name = "last_startup"
     startup_time_format = "%H:%M %d.%m.%Y"
 
     def __init__(self, bot):
+        utils.StartupCog.__init__(self)
+        utils.AutoLogCog.__init__(self, logger)
         self.bot = bot
         self._last_greeted_member = None
-        self._first_ready = True
         self._started_at = None
 
-    @commands.Cog.listener()
-    async def on_ready(self):
+    async def on_startup(self):
         logger.info(f"Logged in as {self.bot.user}")
-        
-        if self._first_ready:
-            self._first_ready = False
-        else:
-            return
-        
         self._started_at = datetime.now()
 
         guilds_list = [f"[{g.name}: {g.member_count} members]" for g in self.bot.guilds]
-        logger.info(f"Connected. Current servers: {', '.join(guilds_list)}")
+        logger.info(f"Current servers: {', '.join(guilds_list)}")
 
         prev_start = self.get_last_startup_time()
         self.update_last_startup_time()
@@ -88,6 +82,7 @@ class Greetings(commands.Cog):
         channel = await self.get_home_channel(member.guild)
         if utils.can_bot_respond(self.bot, channel):
             await channel.send(f"{self.get_greeting(member)} Welcome!")
+            logger.info(f"Greeted new guild member {member}")
 
     @classmethod
     def get_last_startup_time(cls) -> Optional[datetime]:
@@ -133,6 +128,7 @@ class Greetings(commands.Cog):
 
         await self.send_home_channels_message(message, file, name)
         await ctx.send("Notification sent")
+        logger.important(f"{self.format_caller(ctx)} sent global notification {message} with attachment {attachment_link}")
 
     @cog_ext.cog_subcommand(base="home", name="where", guild_ids=guild_ids)
     async def home_channel_where(self, ctx: SlashContext):

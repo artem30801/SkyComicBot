@@ -3,7 +3,6 @@ import logging
 import discord
 from discord.ext import commands
 from discord_slash import cog_ext, SlashContext
-from discord_slash.utils.manage_commands import create_option, create_choice
 
 import traceback
 
@@ -26,7 +25,7 @@ class Errors(commands.Cog):
         elif isinstance(error, commands.NoPrivateMessage):
             message = "You can use that only in guild!"
         else:
-            logger.error(f"Error {type(error)} occurred: {error}")
+            logger.error(f"Unexpected error {repr(error)} occurred:", exc_info=error)
             await ctx.channel.send(f"Unexpected error! "
                                    f"{(await ctx.bot.fetch_user(246333265495982080)).mention} come and fix me!")
             # await send_file(ctx.channel, abs_join("misc", "code.jpg"), "code.jpg")

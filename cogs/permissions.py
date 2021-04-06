@@ -9,6 +9,11 @@ import tortoise
 from tortoise.models import Model
 from tortoise import fields
 
+import cogs.cog_utils as utils
+
+
+logger = logging.getLogger(__name__)
+
 guild_ids = [570257083040137237, 568072142843936778]  # TODO REMOVE
 
 
@@ -47,10 +52,11 @@ def has_bot_perms():
     return commands.check_any(commands.is_owner(), is_whitelisted())
 
 
-class Permissions(commands.Cog):
-    """Commands to gr"""
+class Permissions(utils.AutoLogCog):
+    """Commands to manage bot DB permissions"""
 
     def __init__(self, bot):
+        utils.AutoLogCog.__init__(self, logger)
         self.bot = bot
 
     @staticmethod
