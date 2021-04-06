@@ -2,6 +2,7 @@
 import os
 import json
 import logging
+from logging.handlers import SocketHandler
 import configparser
 from datetime import datetime
 
@@ -36,8 +37,24 @@ async def main():
         config = json.load(f)
     bot.config = config
     bot.owner_ids = set(config["discord"]["owner_ids"])
-    # if not config["discord"]["guild_ids"]:
-    #     config["discord"]["guild_ids"] = None
+
+    current_dir = os.path.dirname(os.path.realpath(__file__))
+    now = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    utils.ensure_dir(utils.abs_join(current_dir, "logs"))
+
+    logging.setLoggerClass(utils.DBLogger)
+    logging.basicConfig(level=logging.DEBUG, format="[%(asctime)s] [%(levelname)-8.8s]-[%(name)-15.15s]: %(message)s",
+                        handlers=[
+                            logging.FileHandler(utils.abs_join(current_dir, "logs", f"{now}.log")),
+                            logging.StreamHandler(),
+                            SocketHandler(bot.config["logging"]["host"], bot.config["logging"]["port"])
+                        ])
+    logging.getLogger("tortoise").setLevel(logging.INFO)
+    logging.getLogger("db_client").setLevel(logging.INFO)
+    logging.getLogger("aiomysql").setLevel(logging.INFO)
+    logging.getLogger("discord.client").setLevel(logging.CRITICAL)
+    logging.getLogger("discord.gateway").setLevel(logging.ERROR)
+    logging.getLogger("discord.http").setLevel(logging.ERROR)
 
     bot.load_extension("cogs.greetings")
     bot.load_extension("cogs.permissions")
@@ -46,12 +63,7 @@ async def main():
     bot.load_extension("cogs.emotes")
     bot.load_extension("cogs.roles")
 
-    # for slash_command in slash.commands.values():
-    #     slash_command.allowed_guild_ids = config["discord"]["guild_ids"]
 
-    # print( slash.to_dict())
-    # bot.add_cog(Conversions(bot, config))
-    # bot.add_cog(Comics(bot))
 
     models = ["cogs.greetings", "cogs.permissions", "cogs.roles", ]  # "cogs.comics",
     try:
@@ -66,23 +78,5 @@ async def main():
 
 
 if __name__ == '__main__':
-    current_dir = os.path.dirname(os.path.realpath(__file__))
-    now = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    utils.ensure_dir(utils.abs_join(current_dir, "logs"))
-
-    logging.setLoggerClass(utils.DBLogger)
-    logging.basicConfig(level=logging.DEBUG, format="[%(asctime)s] [%(levelname)-8.8s]-[%(name)-15.15s]: %(message)s",
-                        handlers=[
-                            logging.FileHandler(utils.abs_join(current_dir, "logs", f"{now}.log")),
-                            logging.StreamHandler(),
-
-                        ])
-    logging.getLogger("tortoise").setLevel(logging.INFO)
-    logging.getLogger("db_client").setLevel(logging.INFO)
-    logging.getLogger("aiomysql").setLevel(logging.INFO)
-    logging.getLogger("discord.client").setLevel(logging.CRITICAL)
-    logging.getLogger("discord.gateway").setLevel(logging.ERROR)
-    logging.getLogger("discord.http").setLevel(logging.ERROR)
-
     loop = asyncio.get_event_loop()
     loop.run_until_complete(main())
