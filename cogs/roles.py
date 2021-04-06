@@ -285,11 +285,11 @@ class Roles(utils.StartupCog):
                        hidden=True)
         await self.update_options()
 
-    @cog_ext.cog_subcommand(base="role", subcommand_group="group", name="remove",
+    @cog_ext.cog_subcommand(base="role", subcommand_group="group", name="delete",
                             options=[
                                 create_option(
                                     name="group",
-                                    description="Group to remove",
+                                    description="Group to delete",
                                     option_type=int,
                                     required=True,
                                 ),
