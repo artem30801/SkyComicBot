@@ -156,21 +156,27 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
         if new_home is None:
             new_home = ctx.channel
 
+        logger.db(f"{ctx.author} trying to set home to '{new_home}' at guild '{ctx.guild}'")
+
         if not isinstance(new_home, discord.TextChannel):
+            logger.db(f"'{new_home}' is not a text channel")
             await ctx.send("Hey! That's not a text channel!", hidden=True)
             return
 
         current_home = await self.get_home_channel(ctx.guild)
 
         if current_home == new_home:
+            logger.db(f"'{new_home}' is already a home channel")
             await ctx.send(f"I'm already living at {new_home.mention}, but hey, thanks for the invitation!",
                            hidden=True)
             return
 
         await self.set_home_channel(ctx.guild, new_home)
+        logger.db(f"Home channel for '{ctx.guild}' set to '{new_home}'")
 
         cmd_response = f"Moving to the {new_home.mention}."
         if not utils.can_bot_respond(ctx.bot, new_home):
+            logger.db(f"Bot is muted at the new home channel")
             cmd_response += ".. You know I'm muted there, right? -_-"
 
         await ctx.send(cmd_response, hidden=True)
@@ -185,13 +191,17 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
     @has_server_perms()
     async def home_channel_remove(self, ctx: SlashContext):
         """Removes home channel for the bot"""
+        logger.db(f"{ctx.author} trying to reset home channel at guild '{ctx.guild}'")
+
         old_home = await self.get_home_channel(ctx.guild)
 
         if old_home is None:
+            logger.db(f"Bot already has no home channel at '{ctx.guild}'")
             await ctx.send("I'm already homeless T_T")
             return
 
         await HomeChannels.update_or_create(guild_id=ctx.guild.id, defaults={"channel_id": None})
+        logger.db(f"Reset home channel at '{ctx.guild}'")
 
         if utils.can_bot_respond(ctx.bot, old_home):
             await old_home.send("Moved away in search of a better home")
