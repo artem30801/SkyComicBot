@@ -32,25 +32,37 @@ class AutoLogCog(commands.Cog):
 
     @classmethod
     def format_command(cls, ctx):
-        return cls.format_stack(ctx.command, ctx.subcommand_group, ctx.subcommand_name)
+        return cls.format_stack(ctx.command, ctx.subcommand_name, ctx.subcommand_group)
+
+    def get_command(self, ctx):
+        if ctx.subcommand_name is not None:
+            command = self.bot.slash.subcommands[ctx.command]
+            if ctx.subcommand_group is None:
+                return command[ctx.subcommand_name]
+            return command[ctx.subcommand_name][ctx.subcommand_group]
+        return self.bot.slash.commands[ctx.command]
+
+    def check_command_cog(self, ctx):
+        try:
+            command = self.get_command(ctx)
+        except KeyError:
+            return False
+
+        if command.cog is self:
+            return True
+        return False
 
     @commands.Cog.listener()
     async def on_slash_command(self, ctx: SlashContext):
-        command = self.bot.slash.commands[ctx.command]
-        if command.cog is not self:
-            return
-
-        self.logger.debug(f"{self.format_caller(ctx)} invoked command "
-                          f"{self.format_command(ctx)}")
+        if self.check_command_cog(ctx):
+            self.logger.debug(f"{self.format_caller(ctx)} invoked command "
+                              f"{self.format_command(ctx)}")
 
     @commands.Cog.listener()
     async def on_slash_command_error(self, ctx: SlashContext, error):
-        command = self.bot.slash.commands[ctx.command]
-        if command.cog is not self:
-            return
-
-        self.logger.warning(f"{self.format_caller(ctx)} caused exception in command "
-                            f"{self.format_command(ctx)}: {repr(error)}")
+        if self.check_command_cog(ctx):
+            self.logger.warning(f"{self.format_caller(ctx)} caused exception in command "
+                                f"{self.format_command(ctx)}: {repr(error)}")
 
 
 class StartupCog(commands.Cog):
