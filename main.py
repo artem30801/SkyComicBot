@@ -43,12 +43,19 @@ async def main():
     utils.ensure_dir(utils.abs_join(current_dir, "logs"))
 
     logging.setLoggerClass(utils.DBLogger)
-    logging.basicConfig(level=logging.DEBUG, format="[%(asctime)s] [%(levelname)-8.8s]-[%(name)-15.15s]: %(message)s",
-                        handlers=[
-                            logging.FileHandler(utils.abs_join(current_dir, "logs", f"{now}.log")),
-                            logging.StreamHandler(),
-                            SocketHandler(bot.config["logging"]["host"], bot.config["logging"]["port"])
-                        ])
+    log_handlers = [
+        logging.FileHandler(utils.abs_join(current_dir, "logs", f"{now}.log")),
+        logging.StreamHandler()
+    ]
+    if "logging" in bot.config and "socket_handlers" in bot.config["logging"]:
+        for handler in bot.config["logging"]["socket_handlers"]:
+            log_handlers.append(SocketHandler(handler["host"], handler["port"]))
+
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="[%(asctime)s] [%(levelname)-8.8s]-[%(name)-15.15s]: %(message)s",
+        handlers=log_handlers
+    )
     logging.getLogger("tortoise").setLevel(logging.INFO)
     logging.getLogger("db_client").setLevel(logging.INFO)
     logging.getLogger("aiomysql").setLevel(logging.INFO)
