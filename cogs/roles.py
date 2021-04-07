@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 role_number = db_utils.NextNumber()
 group_number = db_utils.NextNumber()
 
-guild_ids = [570257083040137237, 568072142843936778]
+guild_ids = [570257083040137237, 568072142843936778, 329097869070172161]  # TODO REMOVE
 
 
 class Role(Model):
@@ -106,8 +106,6 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
                              for role in await Role.filter(group=self._sider_group)][:24]
             sider_choices.insert(0, create_choice(name="Noside", value=-1))
             self.side_join.options[0]["choices"] = sider_choices
-
-        await self.bot.slash.sync_all_commands()
 
     async def update_guilds_roles(self):
         db_roles = await Role.exclude(archived=True)
