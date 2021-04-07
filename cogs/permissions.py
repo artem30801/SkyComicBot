@@ -14,7 +14,7 @@ import cogs.cog_utils as utils
 
 logger = logging.getLogger(__name__)
 
-guild_ids = [570257083040137237, 568072142843936778]  # TODO REMOVE
+guild_ids = [570257083040137237, 568072142843936778, 329097869070172161]  # TODO REMOVE
 
 
 class BotAdmins(Model):
