@@ -49,7 +49,9 @@ async def main():
     ]
     if "logging" in bot.config and "socket_handlers" in bot.config["logging"]:
         for handler in bot.config["logging"]["socket_handlers"]:
-            log_handlers.append(SocketHandler(handler["host"], handler["port"]))
+            socket_handler = SocketHandler(handler["host"], handler["port"])
+            socket_handler.closeOnError = True
+            log_handlers.append(socket_handler)
 
     # noinspection PyArgumentList
     logging.basicConfig(
