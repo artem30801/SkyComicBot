@@ -50,7 +50,7 @@ class Emotes(utils.AutoLogCog):
         self.load_emotes()
 
     def load_emotes(self):
-
+        logger.debug(f'Loading emotes from: {[abs_join("emotes", f"*{ext}") for ext in image_exts]}')
         files = multi_glob(*(abs_join("emotes", f"*{ext}") for ext in image_exts))
 
         self.emotes = {os.path.splitext(os.path.split(filename)[1])[0].replace("_", " ").strip().lower():
@@ -136,7 +136,7 @@ class Emotes(utils.AutoLogCog):
         filename = f"{name.strip().replace(' ', '_')}{ext}"
 
         # Create directory for emotes, if it not exists, attachment.save won't do it
-        utils.ensure_dir("emotes")
+        utils.ensure_dir(os.path.abspath("emotes"))
 
         async with aiohttp.ClientSession() as session:
             async with session.get(attachment_link) as response:
