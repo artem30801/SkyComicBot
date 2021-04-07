@@ -17,7 +17,6 @@ from tortoise.models import Model
 import cogs.cog_utils as utils
 
 
-guild_ids = [570257083040137237, 568072142843936778]  # TODO REMOVE
 logger = logging.getLogger(__name__)
 
 
@@ -81,7 +80,7 @@ class Conversions(utils.AutoLogCog):
                                     option_type=discord.Member,
                                     required=False
                                 ),
-                            ], guild_ids=guild_ids)
+                            ])
     async def convert(self, ctx: SlashContext, time: str, 
                       timezone_from: str = None, member_from: discord.Member = None,
                       timezone_to: str = None, member_to: discord.Member = None):
@@ -136,7 +135,7 @@ class Conversions(utils.AutoLogCog):
                                     option_type=str,
                                     required=True
                                 )
-                            ], guild_ids=guild_ids)
+                            ])
     async def now_tz(self, ctx: SlashContext, timezone: str):
         """Shows current time in the other timezone"""
         await self.now(ctx, timezone)
@@ -149,7 +148,7 @@ class Conversions(utils.AutoLogCog):
                                     option_type=discord.Member,
                                     required=True
                                 )
-                            ], guild_ids=guild_ids)
+                            ])
     async def now_member(self, ctx: SlashContext, member: discord.Member):
         """Shows current time for the other member, if they have timezone set"""
         await self.now(ctx, member)
@@ -180,7 +179,7 @@ class Conversions(utils.AutoLogCog):
                                     option_type=discord.Member,
                                     required=False,
                                 )
-                            ], guild_ids=guild_ids)
+                            ])
     async def timezone(self, ctx: SlashContext, member: discord.Member = None):
         """Shows the timezone of the member (or yours by default)"""
         await ctx.defer(hidden=True)
@@ -206,7 +205,7 @@ class Conversions(utils.AutoLogCog):
                                     option_type=str,
                                     required=True,
                                 )
-                            ], guild_ids=guild_ids)
+                            ])
     async def set_timezone(self, ctx: SlashContext, timezone: str):
         """Sets your timezone to the one you stated"""
         await ctx.defer(hidden=True)
@@ -219,7 +218,7 @@ class Conversions(utils.AutoLogCog):
         await self.set_timezone_for_member(ctx.author, result_tz)
         await ctx.send(f"Your timezone is set to '{result_tz}' ({self.timedelta_to_utc_str(diff)})", hidden=True)
 
-    @cog_ext.cog_subcommand(base="time", subcommand_group="zone", name="reset", guild_ids=guild_ids)
+    @cog_ext.cog_subcommand(base="time", subcommand_group="zone", name="reset")
     async def remove_timezone(self, ctx: SlashContext):
         """Resets your set timezone"""
         await ctx.defer(hidden=True)
