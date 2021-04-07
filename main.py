@@ -23,7 +23,6 @@ import cogs.cog_utils as utils
 nest_asyncio.apply()
 
 
-# https://discordapp.com/oauth2/authorize?&client_id=804306819660644372&scope=bot&permissions=1446509632
 # https://discordapp.com/oauth2/authorize?&client_id=804306819660644372&scope=applications.commands%20bot&permissions=1446509632
 # scope=applications.commands%20bot
 
@@ -31,14 +30,15 @@ nest_asyncio.apply()
 async def main():
     bot = commands.Bot(command_prefix=commands.when_mentioned_or("-", "!"), case_insensitive=True,
                        intents=discord.Intents.all(), help_command=None)
-    slash = SlashCommand(bot, override_type=True)
+    SlashCommand(bot, override_type=True)
 
-    with open("config.json", "r") as f:
+    current_dir = os.path.dirname(os.path.realpath(__file__))
+
+    with open(utils.abs_join(current_dir, "config.json"), "r") as f:
         config = json.load(f)
     bot.config = config
     bot.owner_ids = set(config["discord"]["owner_ids"])
 
-    current_dir = os.path.dirname(os.path.realpath(__file__))
     now = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     utils.ensure_dir(utils.abs_join(current_dir, "logs"))
 
@@ -51,6 +51,7 @@ async def main():
         for handler in bot.config["logging"]["socket_handlers"]:
             log_handlers.append(SocketHandler(handler["host"], handler["port"]))
 
+    # noinspection PyArgumentList
     logging.basicConfig(
         level=logging.DEBUG,
         format="[%(asctime)s] [%(levelname)-9.9s]-[%(name)-15.15s]: %(message)s",
@@ -69,8 +70,6 @@ async def main():
     bot.load_extension("cogs.reactions")
     bot.load_extension("cogs.emotes")
     bot.load_extension("cogs.roles")
-
-
 
     models = ["cogs.greetings", "cogs.permissions", "cogs.roles", ]  # "cogs.comics",
     try:
