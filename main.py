@@ -64,12 +64,14 @@ async def main():
     logging.getLogger("discord.gateway").setLevel(logging.ERROR)
     logging.getLogger("discord.http").setLevel(logging.ERROR)
 
+    bot.load_extension("cogs.service")
     bot.load_extension("cogs.greetings")
     bot.load_extension("cogs.permissions")
     bot.load_extension("cogs.errors")
     bot.load_extension("cogs.reactions")
     bot.load_extension("cogs.emotes")
     bot.load_extension("cogs.roles")
+
 
     models = ["cogs.greetings", "cogs.permissions", "cogs.roles", ]  # "cogs.comics",
     try:
