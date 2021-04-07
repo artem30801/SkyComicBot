@@ -48,10 +48,11 @@ class Emotes(utils.AutoLogCog):
         self.bot = bot
         self.emotes = dict()
         self.load_emotes()
+        self.current_dir = os.path.dirname(os.path.realpath(__file__))
 
     def load_emotes(self):
-        logger.debug(f'Loading emotes from: {[abs_join("emotes", f"*{ext}") for ext in image_exts]}')
-        files = multi_glob(*(abs_join("emotes", f"*{ext}") for ext in image_exts))
+        logger.debug(f'Loading emotes from: {[abs_join(self.current_dir, "emotes", f"*{ext}") for ext in image_exts]}')
+        files = multi_glob(*(abs_join(self.current_dir, "emotes", f"*{ext}") for ext in image_exts))
 
         self.emotes = {os.path.splitext(os.path.split(filename)[1])[0].replace("_", " ").strip().lower():
                            filename for filename in files}
