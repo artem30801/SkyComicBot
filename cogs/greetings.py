@@ -39,7 +39,7 @@ class HomeChannels(Model):
     channel_id = fields.BigIntField(null=True)
 
 
-guild_ids = [570257083040137237, 568072142843936778, 329097869070172161]  # TODO REMOVE
+guild_ids = [570257083040137237, 568072142843936778]  # TODO REMOVE
 
 
 class Greetings(utils.AutoLogCog, utils.StartupCog):
@@ -258,14 +258,14 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
         return message
 
     @cog_ext.cog_slash(options=[
-        create_option(
-            name="member",
-            description="Member who bot should greet",
-            option_type=discord.Member,
-            required=False,
-        )
-    ],
-        guild_ids=guild_ids)
+                           create_option(
+                               name="member",
+                               description="Member who bot should greet",
+                               option_type=discord.Member,
+                               required=False,
+                           )
+                       ],
+                       guild_ids=guild_ids)
     async def hello(self, ctx: SlashContext, member: discord.Member = None):
         """Says hello to you or mentioned member."""
         member = member or ctx.author

@@ -27,7 +27,7 @@ def multi_glob(*patterns):
 
 
 image_exts = (".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff")
-guild_ids = [570257083040137237, 568072142843936778, 329097869070172161]  # TODO REMOVE
+guild_ids = [570257083040137237, 568072142843936778]  # TODO REMOVE
 
 
 class EmoteConverter(commands.Converter):

@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 role_number = db_utils.NextNumber()
 group_number = db_utils.NextNumber()
 
-guild_ids = [570257083040137237, 568072142843936778, 329097869070172161]  # TODO REMOVE
+guild_ids = [570257083040137237, 568072142843936778]
 
 
 class Role(Model):
