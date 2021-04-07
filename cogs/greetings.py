@@ -187,11 +187,11 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
         if utils.can_bot_respond(ctx.bot, new_home):
             await new_home.send("From now I'm living here, yay!")
 
-    @cog_ext.cog_subcommand(base="home", name="remove", guild_ids=guild_ids)
+    @cog_ext.cog_subcommand(base="home", name="reset", guild_ids=guild_ids)
     @commands.guild_only()
     @has_server_perms()
     async def home_channel_remove(self, ctx: SlashContext):
-        """Removes home channel for the bot"""
+        """Resets home channel for the bot"""
         logger.db(f"{self.format_caller(ctx)} trying to reset home channel at guild '{ctx.guild}'")
 
         old_home = await self.get_home_channel(ctx.guild)
