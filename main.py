@@ -1,19 +1,16 @@
-
-import os
+import asyncio
 import json
 import logging
-from logging.handlers import SocketHandler
-import configparser
+import os
 from datetime import datetime
-
-import asyncio
-import nest_asyncio
-
-from tortoise import Tortoise, run_async
+from logging.handlers import SocketHandler
+from cogs.logging_utils import BufferingSocketHandler
 
 import discord
+import nest_asyncio
 from discord.ext import commands
 from discord_slash import SlashCommand
+from tortoise import Tortoise
 
 import cogs.cog_utils as utils
 
@@ -48,8 +45,9 @@ async def main():
         logging.StreamHandler()
     ]
     if "logging" in bot.config and "socket_handlers" in bot.config["logging"]:
-        for handler in bot.config["logging"]["socket_handlers"]:
-            socket_handler = SocketHandler(handler["host"], handler["port"])
+        for num, handler in enumerate(bot.config["logging"]["socket_handlers"], start=1):
+            buffer = utils.abs_join(current_dir, "logs", f"log_buffer_{num}.bin")
+            socket_handler = BufferingSocketHandler(handler["host"], handler["port"], buffer)
             socket_handler.closeOnError = True
             log_handlers.append(socket_handler)
 
