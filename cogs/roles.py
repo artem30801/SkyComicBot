@@ -107,6 +107,8 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
             sider_choices.insert(0, create_choice(name="Noside", value=-1))
             self.side_join.options[0]["choices"] = sider_choices
 
+        await self.bot.slash.sync_all_commands()
+
     async def update_guilds_roles(self):
         db_roles = await Role.exclude(archived=True)
         to_remove = await Role.filter(archived=True).values_list("name", flat=True)
