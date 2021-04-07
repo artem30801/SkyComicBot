@@ -31,7 +31,7 @@ class Errors(commands.Cog):
             # await send_file(ctx.channel, abs_join("misc", "code.jpg"), "code.jpg")
             return
 
-        await ctx.send(message, hidden=True)
+        await ctx.send(message, hidden=True, allowed_mentions=discord.AllowedMentions.none())
 
 
 def setup(bot):

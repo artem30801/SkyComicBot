@@ -1,17 +1,21 @@
-import configparser
 import logging
 import re
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Optional
+from typing import Optional, Union
 
 import discord
 import requests
 from discord.ext import commands
+from discord_slash import cog_ext, SlashContext
+from discord_slash.utils.manage_commands import create_option, create_choice
 
 import tortoise
 from tortoise import fields
 from tortoise.models import Model
+
+import cogs.cog_utils as utils
+
 
 logger = logging.getLogger(__name__)
 
@@ -32,134 +36,209 @@ class TimezoneInputType(Enum):
     InvalidData = 2
 
 
-class Conversions(commands.Cog):
+class Conversions(utils.AutoLogCog):
     """Timezone conversions (and maybe temperature later?)"""
 
-    def __init__(self, bot: commands.Bot, config: configparser.ConfigParser):
+    def __init__(self, bot: commands.Bot):
+        utils.AutoLogCog.__init__(self, logger)
         self.bot = bot
         self.timedb_key = None
         try:
-            self.timedb_key = config["AUTH"]["timezonedb_key"]
+            self.timedb_key = bot.config["auth"]["timezonedb_key"]
         except KeyError:
             logger.warning("Can't read TimezoneDB API key!")
 
-    @commands.command(help="Converts time between timezones. Use '!help convert' for details",
-                      description="Use as '!convert time timezone_from timezone_to' "
-                                  "(for example '!convert 9:15 AM CST GMT+3')\n"
-                                  "Time supports both 12h and 24h formats\n"
-                                  "Use abbreviation or UTC offset to specify timezones.\n"
-                                  "Take into account that some timezones are sharing one abbreviation.",
-                      aliases=["conv", "time"])
-    async def convert(self, ctx: commands.context.Context, *args):
-        if len(args) < 3:
-            await ctx.send("There should be at least 3 arguments for time conversion (time timezone_from timezone_to)")
-            return
+    @cog_ext.cog_subcommand(base="time", name="convert",
+                            options=[
+                                create_option(
+                                    name="time",
+                                    description="Time in 12/24h format in 'from' timezone",
+                                    option_type=str,
+                                    required=True
+                                ),
+                                create_option(
+                                    name="timezone_from",
+                                    description="Source timezone abbreviation (may be with shift, e.g. GMT+3)",
+                                    option_type=str,
+                                    required=False
+                                ),
+                                create_option(
+                                    name="member_from",
+                                    description="Member with set timezone, that will be used as source timezone",
+                                    option_type=discord.Member,
+                                    required=False
+                                ),
+                                create_option(
+                                    name="timezone_to",
+                                    description="Destination timezone abbreviation (may be with shift, e.g. GMT+3)",
+                                    option_type=str,
+                                    required=False
+                                ),
+                                create_option(
+                                    name="member_to",
+                                    description="Member with set timezone, that will be used as destination timezone",
+                                    option_type=discord.Member,
+                                    required=False
+                                ),
+                            ])
+    async def convert(self, ctx: SlashContext, time: str, 
+                      timezone_from: str = None, member_from: discord.Member = None,
+                      timezone_to: str = None, member_to: discord.Member = None):
+        """Converts time from one timezone to another"""
+        await ctx.defer()
+        logger.debug(f"{ctx.author} trying to convert '{time}' from '{timezone_from}'/'{member_from}' to '{timezone_to}'/'{member_to}'")
 
-        time_str = ' '.join(args[0:-2])
-        source_time, should_use_12_hours = Conversions.strtime_to_datetime(time_str)
+        source_time, should_use_12_hours = Conversions.strtime_to_datetime(time)
         if source_time is None:
-            await ctx.send(f"Can't parse '{time_str}' time. Is it valid?")
-            return
+            raise commands.BadArgument(f"Can't parse '{time}' time. Is it valid?")
 
-        async with ctx.typing():
-            try:
-                tz_from_utc_diff, from_tz_name, input_type = await self.get_diff_from_utc(ctx, args[-2])
-                if tz_from_utc_diff is None:
-                    await ctx.send(self.get_invalid_timezone_response(args[-2], input_type))
-                    return
+        tz_from = member_from or timezone_from or ctx.author
+        tz_to = member_to or timezone_to
+        if tz_to is None:
+            raise commands.BadArgument("Either timezone_to or member_to should be set")
 
-                tz_to_utc_diff, to_tz_name, input_type = await self.get_diff_from_utc(ctx, args[-1])
-                if tz_to_utc_diff is None:
-                    await ctx.send(self.get_invalid_timezone_response(args[-1], input_type))
-                    return
+        tz_from_utc_diff, from_tz_name, input_type = await self.get_diff_from_utc(ctx, tz_from)
+        if tz_from_utc_diff is None:
+            if member_from is None and timezone_from is None:
+                raise commands.BadArgument("Either timezone_from, member_from or your timezone should be set")
+            raise commands.BadArgument(self.get_invalid_timezone_response(tz_from, input_type, ctx.author))
 
-            except TimezonedbException as exception:
-                await ctx.send("Sorry, timezones functionality is unavailable now =( Ping developers!")
-                return
+        tz_to_utc_diff, to_tz_name, input_type = await self.get_diff_from_utc(ctx, tz_to)
+        if tz_to_utc_diff is None:
+            raise commands.BadArgument(self.get_invalid_timezone_response(tz_to, input_type, ctx.author))
 
-            result_time = source_time - tz_from_utc_diff + tz_to_utc_diff
+        result_time = source_time - tz_from_utc_diff + tz_to_utc_diff
 
-            # set result as 12/24 hours time depending on request format
-            if should_use_12_hours:
-                source_time = f'{source_time:%I:%M %p}'
-                result_time = f'{result_time:%I:%M %p}'
-            else:
-                source_time = f'{source_time:%H:%M}'
-                result_time = f'{result_time:%H:%M}'
+        # set result as 12/24 hours time depending on request format
+        if should_use_12_hours:
+            source_time = f'{source_time:%I:%M %p}'
+            result_time = f'{result_time:%I:%M %p}'
+        else:
+            source_time = f'{source_time:%H:%M}'
+            result_time = f'{result_time:%H:%M}'
 
-            from_tz_shift = self.timedelta_to_utc_str(tz_from_utc_diff)
-            to_tz_shift = self.timedelta_to_utc_str(tz_to_utc_diff)
+        from_tz_shift = self.timedelta_to_utc_str(tz_from_utc_diff)
+        to_tz_shift = self.timedelta_to_utc_str(tz_to_utc_diff)
 
-            embed_result = discord.Embed(title=result_time)
-            embed_result.add_field(name="From", value=f"{source_time}\n{from_tz_name} ({from_tz_shift})")
-            embed_result.add_field(name="To", value=f"{result_time}\n{to_tz_name} ({to_tz_shift})")
+        embed_result = discord.Embed(title=result_time)
+        embed_result.color = utils.embed_color
+        embed_result.add_field(name="From", value=f"{source_time}\n{from_tz_name} ({from_tz_shift})")
+        embed_result.add_field(name="To", value=f"{result_time}\n{to_tz_name} ({to_tz_shift})")
 
-            await ctx.send(embed=embed_result)
+        await ctx.send(embed=embed_result)
 
-    @commands.command()
-    async def now(self, ctx: commands.context.Context, timezone: str):
-        """Shows current time in the other timezone or for the other member"""
-        with ctx.typing():
-            tz_utc_diff, tz_name, input_type = await self.get_diff_from_utc(ctx, timezone)
-            if tz_utc_diff is None:
-                await ctx.send(self.get_invalid_timezone_response(timezone, input_type))
+    @cog_ext.cog_subcommand(base="time", subcommand_group = "now", name="timezone",
+                            options=[
+                                create_option(
+                                    name="timezone",
+                                    description="Timezone abbreviation (may be with shift, e.g. GMT+3)",
+                                    option_type=str,
+                                    required=True
+                                )
+                            ])
+    async def now_tz(self, ctx: SlashContext, timezone: str):
+        """Shows current time in the other timezone"""
+        await self.now(ctx, timezone)
 
-            result_time = datetime.utcnow() + tz_utc_diff
-            tz_shift = self.timedelta_to_utc_str(tz_utc_diff)
+    @cog_ext.cog_subcommand(base="time", subcommand_group = "now", name="member",
+                            options=[
+                                create_option(
+                                    name="member",
+                                    description="Server member with set timezone",
+                                    option_type=discord.Member,
+                                    required=True
+                                )
+                            ])
+    async def now_member(self, ctx: SlashContext, member: discord.Member):
+        """Shows current time for the other member, if they have timezone set"""
+        await self.now(ctx, member)
 
-            embed_result = discord.Embed(title=f'{result_time:%I:%M %p} | {result_time:%H:%M}')
-            embed_result.add_field(name="Timezone", value=f"{tz_name} ({tz_shift})")
+    async def now(self, ctx: SlashContext, timezone: Union[str, discord.Member]):
+        """Shows current time in the other timezone or for the member"""
+        await ctx.defer()
+        logger.debug(f"{ctx.author} checking time for '{timezone}'")
 
-            await ctx.send(embed=embed_result)
+        tz_utc_diff, tz_name, input_type = await self.get_diff_from_utc(ctx, timezone)
+        if tz_utc_diff is None:
+            raise commands.BadArgument(self.get_invalid_timezone_response(timezone, input_type, ctx.author))
 
-    @commands.group(aliases=["tz"], case_insensitive=True, invoke_without_command=True)
-    async def timezone(self, ctx: commands.context.Context, member: discord.Member = None):
-        """Shows the timezone of the member or yours by default"""
-        member_timezone = await self.get_timezone_for_member(member if member else ctx.author)
+        result_time = datetime.utcnow() + tz_utc_diff
+        tz_shift = self.timedelta_to_utc_str(tz_utc_diff)
 
-        no_mentions = discord.AllowedMentions.none()
+        embed_result = discord.Embed(title=f'{result_time:%I:%M %p} | {result_time:%H:%M}')
+        embed_result.color = utils.embed_color
+        embed_result.add_field(name="Timezone", value=f"{tz_name} ({tz_shift})")
+
+        await ctx.send(embed=embed_result)
+
+    @cog_ext.cog_subcommand(base="time", subcommand_group="zone", name="check",
+                            options=[
+                                create_option(
+                                    name="member",
+                                    description="Server member with set timezone",
+                                    option_type=discord.Member,
+                                    required=False,
+                                )
+                            ])
+    async def timezone(self, ctx: SlashContext, member: discord.Member = None):
+        """Shows the timezone of the member (or yours by default)"""
+        await ctx.defer(hidden=True)
+        logger.debug(f"{ctx.author} checking {member or ctx.author} timezone")
+        
+        member_timezone = await self.get_timezone_for_member(member or ctx.author)
+
         if member_timezone is not None:
-            await ctx.send(f"{member.mention if member else 'Your'} timezone is {member_timezone}",
-                           allowed_mentions=no_mentions)
+            await ctx.send(f"{member.mention if member else 'Your'} timezone is '{member_timezone}'",
+                           hidden=True)
         else:
             if member is not None:
                 await ctx.send(f"Sorry, {member.mention} didn't set the timezone",
-                               allowed_mentions=no_mentions)
+                               hidden=True)
             else:
-                await ctx.send("You didn't set your timezone. User '!timezone set' for this")
-
-    @timezone.command(name="set")
-    async def set_timezone(self, ctx: commands.context.Context, timezone: str):
+                await ctx.send("You didn't set your timezone. User '/time zone set' for this", hidden=True)
+    
+    @cog_ext.cog_subcommand(base="time", subcommand_group="zone", name="set",
+                            options=[
+                                create_option(
+                                    name="timezone",
+                                    description="Abbreviation of the timezone that you want to set",
+                                    option_type=str,
+                                    required=True,
+                                )
+                            ])
+    async def set_timezone(self, ctx: SlashContext, timezone: str):
         """Sets your timezone to the one you stated"""
-        async with ctx.typing():
-            try:
-                diff, result_tz, _ = await self.get_diff_from_utc(ctx, timezone)
-                if diff is None:
-                    await ctx.send(f"Sorry, looks like timezone '{timezone}' is not a valid timezone abbreviation")
-                    return
+        await ctx.defer(hidden=True)
+        logger.info(f"{ctx.author} trying to set timezone '{timezone}'")
 
-                await self.set_timezone_for_member(ctx.author, result_tz)
-                await ctx.send(f"Your timezone is set to '{result_tz}' ({self.timedelta_to_utc_str(diff)})")
+        diff, result_tz, _ = await self.get_diff_from_utc(ctx, timezone)
+        if diff is None:
+            raise commands.BadArgument(f"Sorry, looks like '{timezone}' is not a valid timezone abbreviation")
 
-            except TimezonedbException:
-                await ctx.send(f"Sorry, timezones functionality is unavailable now =( Ping developers!")
+        await self.set_timezone_for_member(ctx.author, result_tz)
+        await ctx.send(f"Your timezone is set to '{result_tz}' ({self.timedelta_to_utc_str(diff)})", hidden=True)
 
-    @timezone.command(name="remove", aliases=["clear", "reset", "yeet"])
-    async def remove_timezone(self, ctx: commands.context.Context):
-        """Removes your timezone, if you set any"""
+    @cog_ext.cog_subcommand(base="time", subcommand_group="zone", name="reset")
+    async def remove_timezone(self, ctx: SlashContext):
+        """Resets your set timezone"""
+        await ctx.defer(hidden=True)
+        logger.info(f"{ctx.author} trying to reset timezone")
+
         if await self.clear_timezone_for_member(ctx.author):
-            await ctx.send("Your timezone was removed!")
+            await ctx.send("Your timezone was removed!", hidden=True)
         else:
-            await ctx.send("You have no timezone to remove")
+            await ctx.send("You have no timezone to remove", hidden=True)
 
     @staticmethod
-    def get_invalid_timezone_response(input: str, input_type: TimezoneInputType):
+    def get_invalid_timezone_response(timezone: Union[str, discord.Member], input_type: TimezoneInputType, sender: discord.Member):
         if input_type == TimezoneInputType.ValidUser:
-            if input.upper() == "ME":
-                input = "you"
-            return f"Looks like {input} did't set the timezone!"
+            if isinstance(timezone, discord.Member):
+                timezone = "you" if timezone == sender else timezone.mention
+            elif str(timezone).upper() == "ME":
+                timezone = "you"
+            return f"Looks like {timezone} did't set the timezone!"
 
-        return f"{input} is not a valid member or timezone abbreviation"
+        return f"{timezone} is not a valid member or timezone abbreviation"
 
     @staticmethod
     def strtime_to_datetime(time: str):
@@ -242,7 +321,7 @@ class Conversions(commands.Cog):
         minutes, _ = divmod(seconds, 60)
         return f"UTC{int(hours):+}" + (f":{int(minutes)}" if minutes != 0 else "")
 
-    async def get_diff_from_utc(self, ctx: commands.context.Context, timezone_or_member: str) -> (Optional[timedelta], Optional[str], TimezoneInputType):
+    async def get_diff_from_utc(self, ctx: commands.context.Context, timezone_or_member: Union[str, discord.Member]) -> (Optional[timedelta], Optional[str], TimezoneInputType):
         """
         Returns difference between stated timezone and UTC+0 as timedelta, timezone name, and was the first argument a member or not
         If timezone is a member, will try to get a timezone from DB for this member
@@ -250,7 +329,9 @@ class Conversions(commands.Cog):
         Can raise TimezonedbException in case of errors with TimezoneDB
         """
         try:
-            if timezone_or_member.upper() == "ME":
+            if isinstance(timezone_or_member, discord.Member):
+                member = timezone_or_member
+            elif timezone_or_member.upper() == "ME":
                 member = ctx.author
             else:
                 member = await commands.MemberConverter().convert(ctx, timezone_or_member)
@@ -396,3 +477,7 @@ class Conversions(commands.Cog):
         if timezone_entry is None:
             return None
         return timezone_entry.member_timezone
+
+
+def setup(bot):
+    bot.add_cog(Conversions(bot))

@@ -150,11 +150,11 @@ class Emotes(utils.AutoLogCog):
         self.load_emotes()
         await ctx.send(f"Successfully added emote **{fuzzy_search(filename, self.emotes.keys())}**.")
 
-    @cog_ext.cog_subcommand(base="emote", name="remove",
+    @cog_ext.cog_subcommand(base="emote", name="delete",
                             options=[
                                 create_option(
                                     name="name",
-                                    description="Name of emote to remove",
+                                    description="Name of emote to delete",
                                     option_type=str,
                                     required=True,
                                 ),
@@ -162,7 +162,7 @@ class Emotes(utils.AutoLogCog):
                             guild_ids=guild_ids)
     @has_bot_perms()
     async def emote_remove(self, ctx, name):
-        """Removes existing emote."""
+        """Deletes existing emote."""
         logger.important(f"{self.format_caller(ctx)} trying to remove emote '{name}'")
 
         ctx.cog = self
