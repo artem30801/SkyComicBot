@@ -7,10 +7,9 @@ from discord_slash import cog_ext, SlashContext
 from discord_slash.utils.manage_commands import create_option, create_choice
 
 import os
-import io
+import sys
 import re
 import glob
-import typing
 import itertools
 from urllib.parse import urlparse
 from pathlib import Path
@@ -47,11 +46,10 @@ class Emotes(utils.AutoLogCog):
         utils.AutoLogCog.__init__(self, logger)
         self.bot = bot
         self.emotes = dict()
+        self.current_dir = os.path.abspath(os.path.dirname(sys.argv[0]))
         self.load_emotes()
-        self.current_dir = os.path.dirname(os.path.realpath(__file__))
 
     def load_emotes(self):
-        logger.debug(f'Loading emotes from: {[abs_join(self.current_dir, "emotes", f"*{ext}") for ext in image_exts]}')
         files = multi_glob(*(abs_join(self.current_dir, "emotes", f"*{ext}") for ext in image_exts))
 
         self.emotes = {os.path.splitext(os.path.split(filename)[1])[0].replace("_", " ").strip().lower():
@@ -144,7 +142,7 @@ class Emotes(utils.AutoLogCog):
                 if response.status == 200:
                     attachment = await response.read()
 
-        with open(abs_join("emotes", filename), 'wb') as f:
+        with open(abs_join(self.current_dir, "emotes", filename), 'wb') as f:
             f.write(attachment)
         logger.important(f"Saved emote '{name}' as '{filename}'")
 
