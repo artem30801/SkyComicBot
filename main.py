@@ -30,7 +30,7 @@ nest_asyncio.apply()
 
 async def main():
     bot = commands.Bot(command_prefix=commands.when_mentioned_or("-", "!"), case_insensitive=True,
-                       intents=discord.Intents.all())
+                       intents=discord.Intents.all(), help_command=None)
     slash = SlashCommand(bot, override_type=True)
 
     with open("config.json", "r") as f:

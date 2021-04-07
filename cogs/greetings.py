@@ -128,7 +128,8 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
 
         await self.send_home_channels_message(message, file, name)
         await ctx.send("Notification sent")
-        logger.important(f"{self.format_caller(ctx)} sent global notification {message} with attachment {attachment_link}")
+        logger.important(
+            f"{self.format_caller(ctx)} sent global notification {message} with attachment {attachment_link}")
 
     @cog_ext.cog_subcommand(base="home", name="where", guild_ids=guild_ids)
     async def home_channel_where(self, ctx: SlashContext):
@@ -191,7 +192,7 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
     @has_server_perms()
     async def home_channel_remove(self, ctx: SlashContext):
         """Removes home channel for the bot"""
-        logger.db(f"{ctx.author} trying to reset home channel at guild '{ctx.guild}'")
+        logger.db(f"{self.format_caller(ctx)} trying to reset home channel at guild '{ctx.guild}'")
 
         old_home = await self.get_home_channel(ctx.guild)
 
@@ -287,6 +288,18 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
     async def sync(self, ctx):
         await self.bot.slash.sync_all_commands()
         await ctx.send(f"Completed syncing all commands")
+
+    @commands.command()
+    async def help(self, ctx, *, _=''):
+        embed = discord.Embed(title="SkyComicBot help", color=utils.embed_color,
+                              description="We migrated to use newest Discord feature: slash commands.\n"
+                                          "Now you can interact with the bot in much more... eh... interactive way!\n"
+                                          "Just type / and list of all available commands will appear.\n"
+                                          "Use 'TAB' button to autocomplete and choose commands, options, choices.\n"
+                                          "[Read details at Discord blog]"
+                                          "(https://blog.discord.com/slash-commands-are-here-8db0a385d9e6)",
+                              )
+        await ctx.send(embed=embed)
 
 
 def setup(bot):
