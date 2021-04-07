@@ -58,6 +58,7 @@ class Emotes(utils.AutoLogCog):
         self.emote_pick.options[0]["choices"] = [create_choice(name=key, value=key) for key in self.emotes.keys()][:25]
 
         logger.debug(f"Loaded emotes: {self.emotes}")
+        await self.bot.slash.sync_all_commands()
 
     @cog_ext.cog_subcommand(base="emote", name="send",
                             options=[
