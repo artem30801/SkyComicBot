@@ -4,4 +4,4 @@ discord.py
 discord-py-slash-command
 python-dateutil
 fuzzywuzzy[speedup]
-requests
+aiohttp

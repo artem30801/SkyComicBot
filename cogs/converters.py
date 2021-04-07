@@ -4,8 +4,8 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Optional, Union
 
+import aiohttp
 import discord
-import requests
 from discord.ext import commands
 from discord_slash import cog_ext, SlashContext
 from discord_slash.utils.manage_commands import create_option, create_choice
@@ -17,6 +17,7 @@ from tortoise.models import Model
 import cogs.cog_utils as utils
 
 
+guild_ids = [570257083040137237, 568072142843936778]  # TODO REMOVE
 logger = logging.getLogger(__name__)
 
 
@@ -80,7 +81,7 @@ class Conversions(utils.AutoLogCog):
                                     option_type=discord.Member,
                                     required=False
                                 ),
-                            ])
+                            ], guild_ids=guild_ids)
     async def convert(self, ctx: SlashContext, time: str, 
                       timezone_from: str = None, member_from: discord.Member = None,
                       timezone_to: str = None, member_to: discord.Member = None):
@@ -135,7 +136,7 @@ class Conversions(utils.AutoLogCog):
                                     option_type=str,
                                     required=True
                                 )
-                            ])
+                            ], guild_ids=guild_ids)
     async def now_tz(self, ctx: SlashContext, timezone: str):
         """Shows current time in the other timezone"""
         await self.now(ctx, timezone)
@@ -148,7 +149,7 @@ class Conversions(utils.AutoLogCog):
                                     option_type=discord.Member,
                                     required=True
                                 )
-                            ])
+                            ], guild_ids=guild_ids)
     async def now_member(self, ctx: SlashContext, member: discord.Member):
         """Shows current time for the other member, if they have timezone set"""
         await self.now(ctx, member)
@@ -179,7 +180,7 @@ class Conversions(utils.AutoLogCog):
                                     option_type=discord.Member,
                                     required=False,
                                 )
-                            ])
+                            ], guild_ids=guild_ids)
     async def timezone(self, ctx: SlashContext, member: discord.Member = None):
         """Shows the timezone of the member (or yours by default)"""
         await ctx.defer(hidden=True)
@@ -205,7 +206,7 @@ class Conversions(utils.AutoLogCog):
                                     option_type=str,
                                     required=True,
                                 )
-                            ])
+                            ], guild_ids=guild_ids)
     async def set_timezone(self, ctx: SlashContext, timezone: str):
         """Sets your timezone to the one you stated"""
         await ctx.defer(hidden=True)
@@ -218,7 +219,7 @@ class Conversions(utils.AutoLogCog):
         await self.set_timezone_for_member(ctx.author, result_tz)
         await ctx.send(f"Your timezone is set to '{result_tz}' ({self.timedelta_to_utc_str(diff)})", hidden=True)
 
-    @cog_ext.cog_subcommand(base="time", subcommand_group="zone", name="reset")
+    @cog_ext.cog_subcommand(base="time", subcommand_group="zone", name="reset", guild_ids=guild_ids)
     async def remove_timezone(self, ctx: SlashContext):
         """Resets your set timezone"""
         await ctx.defer(hidden=True)
@@ -351,11 +352,11 @@ class Conversions(utils.AutoLogCog):
 
             result_type = TimezoneInputType.ValidTimezone
 
-        diff = self.timezones_diff("UTC", timezone)
+        diff = await self.timezones_diff("UTC", timezone)
         result_type = result_type if diff is not None else TimezoneInputType.InvalidData
         return diff, timezone if diff is not None else None, result_type
 
-    def timezones_diff(self, timezone_from: str, timezone_to: str):
+    async def timezones_diff(self, timezone_from: str, timezone_to: str):
         """
         Returns difference between timezones as timedelta, if timezones are valid, and None if not
         timezone_from and timezone_to should be timezone abbreviations
@@ -372,7 +373,7 @@ class Conversions(utils.AutoLogCog):
         if timezone_from != timezone_to:
             # We're force timezones to upper case since we're expecting abbreviation and TimezoneDB API is case sensitive
             # Technically, we can also work with cities, but then some adjustments are needed
-            diff = self.get_diff_from_timezonedb(timezone_from.upper(), timezone_to.upper())
+            diff = await self.get_diff_from_timezonedb(timezone_from.upper(), timezone_to.upper())
         else:
             diff = 0
 
@@ -417,7 +418,7 @@ class Conversions(utils.AutoLogCog):
 
         return timezone, offset
 
-    def get_diff_from_timezonedb(self, timezone_from: str, timezone_to: str):
+    async def get_diff_from_timezonedb(self, timezone_from: str, timezone_to: str):
         """
         Sends request to TimezoneDB to get the difference between statet timezones
         Returns difference in seconds in case if success, and None in case of invalid timezones
@@ -430,29 +431,29 @@ class Conversions(utils.AutoLogCog):
             "to": str(timezone_to)
         }
         try:
-            diff_request = requests.get("http://api.timezonedb.com/v2.1/convert-time-zone", params=params)
+            async with aiohttp.ClientSession() as session:
+                async with session.get("http://api.timezonedb.com/v2.1/convert-time-zone", params=params) as response:
+                    if not response.ok:
+                        logger.error(f"Got error {response.status}: {response.reason} while processing request!\n" +
+                                    f"Request is '{response.url}'")
+                        raise TimezonedbException()
+
+                    result = await response.json()
+                    if result["status"] != "OK":
+                        message = result["message"]
+                        if message == "From Time Zone: Invalid zone name or abbreviation.":
+                            return None
+                        if message == "To Time Zone: Invalid zone name or abbreviation.":
+                            return None
+
+                        logger.error(f"TimezoneDB request status is not OK. Message: '{message}'")
+                        raise TimezonedbException()
+
+                    return int(result["offset"])
+                    
         except Exception as exception:
             logger.error(exception)
             raise TimezonedbException()
-
-        if not diff_request.ok:
-            logger.error(f"Got error {diff_request.status_code}: {diff_request.reason} while processing request!\n" +
-                         f"Request is '{diff_request.url}'\n" +
-                         f"Response is '{diff_request.text}'")
-            raise TimezonedbException()
-
-        result = diff_request.json()
-        if result["status"] != "OK":
-            message = result["message"]
-            if message == "From Time Zone: Invalid zone name or abbreviation.":
-                return None
-            if message == "To Time Zone: Invalid zone name or abbreviation.":
-                return None
-
-            logger.error(f"TimezoneDB request status is not OK. Message: '{result['message']}'")
-            raise TimezonedbException()
-
-        return int(result["offset"])
 
     @staticmethod
     async def set_timezone_for_member(member: discord.Member, timezone: str):
