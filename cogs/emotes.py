@@ -38,18 +38,22 @@ class EmoteConverter(commands.Converter):
         return key
 
 
-class Emotes(utils.AutoLogCog):
+class Emotes(utils.AutoLogCog, utils.StartupCog):
     """Emote pictures sending and managing"""
 
     # :griffin_hug:
     def __init__(self, bot):
         utils.AutoLogCog.__init__(self, logger)
+        utils.StartupCog.__init__(self)
+
         self.bot = bot
         self.emotes = dict()
         self.current_dir = os.path.abspath(os.path.dirname(sys.argv[0]))
-        self.load_emotes()
 
-    def load_emotes(self):
+    async def on_startup(self):
+        await self.load_emotes()
+
+    async def load_emotes(self):
         files = multi_glob(*(abs_join(self.current_dir, "emotes", f"*{ext}") for ext in image_exts))
 
         self.emotes = {os.path.splitext(os.path.split(filename)[1])[0].replace("_", " ").strip().lower():
@@ -147,7 +151,7 @@ class Emotes(utils.AutoLogCog):
             f.write(attachment)
         logger.important(f"Saved emote '{name}' as '{filename}'")
 
-        self.load_emotes()
+        await self.load_emotes()
         await ctx.send(f"Successfully added emote **{fuzzy_search(filename, self.emotes.keys())}**.")
 
     @cog_ext.cog_subcommand(base="emote", name="delete",
@@ -170,7 +174,7 @@ class Emotes(utils.AutoLogCog):
         os.remove(self.emotes[emote])
         logger.important(f"Removed emote '{emote}' file '{self.emotes[emote]}'")
 
-        self.load_emotes()
+        await self.load_emotes()
         await ctx.send(f"Successfully removed emote **{emote}**.")
 
 
