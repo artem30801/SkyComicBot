@@ -5,8 +5,9 @@ from discord.ext import commands
 
 import re
 import os
+import sys
 
-from cogs.cog_utils import send_file
+from cogs.cog_utils import abs_join, send_file
 
 
 def contains_word(message: str, word: str) -> bool:
@@ -21,6 +22,7 @@ class Reactions(commands.Cog):
     # :griffin_hug:
     def __init__(self, bot):
         self.bot = bot
+        self.current_dir = os.path.abspath(os.path.dirname(sys.argv[0]))
         self._reactions = {("telling", ): self.telling,
                            ("wrong layer", "wrong\\s[\\w]+\\slayer"): self.wrong_layer,
                            ("hug", "hugs"): self.hug}
@@ -37,10 +39,10 @@ class Reactions(commands.Cog):
                 break
 
     async def telling(self, message):
-        await send_file(message.channel, os.path.join("reactions", "telling.gif"), "thatwouldbetelling.gif")
+        await send_file(message.channel, abs_join(self.current_dir, "reactions", "telling.gif"), "thatwouldbetelling.gif")
 
     async def wrong_layer(self, message):
-        await send_file(message.channel, os.path.join("reactions", "wrong_layer.gif"), "wronglayersong.gif")
+        await send_file(message.channel, abs_join(self.current_dir, "reactions", "wrong_layer.gif"), "wronglayersong.gif")
 
     async def hug(self, message):
         collection = self.bot.emojis
