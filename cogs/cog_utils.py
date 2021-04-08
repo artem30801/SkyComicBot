@@ -1,6 +1,7 @@
 import logging
 
 import discord
+from discord.ext.commands import Bot
 from discord.ext import commands
 from discord_slash import cog_ext, SlashContext
 
@@ -13,6 +14,7 @@ from fuzzywuzzy import fuzz
 embed_color = 0x72a3f2
 bot_manager_role = "Bot manager"
 stream_crew_role = "livestream crew"
+snapshot_role_group = "Snapshot"
 db_log_level = 25
 important_log_level = 29
 
@@ -122,7 +124,7 @@ def url_hostname(url):
     return url.split("//")[-1].split("/")[0].split('?')[0]
 
 
-def can_bot_respond(bot: discord.ext.commands.Bot, channel: discord.TextChannel):
+def can_bot_respond(bot: Bot, channel: discord.TextChannel) -> bool:
     """Checks, can a bot send messages to this channel"""
     if bot is None or channel is None:
         return False
@@ -130,3 +132,17 @@ def can_bot_respond(bot: discord.ext.commands.Bot, channel: discord.TextChannel)
     bot_as_member = channel.guild.get_member(bot.user.id)
     permissions = channel.permissions_for(bot_as_member)
     return permissions.send_messages
+
+def can_manage_role(bot: Bot, role: discord.Role) -> bool:
+    """Checks, can a bot change assign this role to anybody"""
+    if bot is None or role is None:
+        return False
+    
+    bot_as_member = role.guild.get_member(bot.user.id)
+    if not bot_as_member.guild_permissions.manage_roles:
+        return False
+
+    for bot_role in bot_as_member.roles:
+        if bot_role >= role:
+            return True
+    return False 
