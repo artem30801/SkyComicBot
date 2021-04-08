@@ -113,9 +113,18 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         to_remove = await Role.filter(archived=True).values_list("name", flat=True)
 
         for guild in self.bot.guilds:
+            bot_as_member = guild.get_member(self.bot.user.id)
+            if not bot_as_member.guild_permissions.manage_roles:
+                logger.warning(f"Don't have manage roles permissions in '{guild}'")
+                continue
+
             position = guild.me.top_role.position
             for db_role in db_roles:
                 role = discord.utils.get(guild.roles, name=db_role.name)
+                if not utils.can_manage_role(self.bot, role):
+                    logger.warning(f"Can't manage role '{db_role.name}' at '{guild}'")
+                    continue
+
                 position -= 1
                 try:
                     if role is not None:
@@ -125,7 +134,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
                                                        mentionable=db_role.mentionable)
                         await role.edit(position=position)
                 except discord.errors.Forbidden:
-                    logger.warning(f"Can't setup role {db_role.name} at {guild}")
+                    logger.warning(f"Failed to setup role '{db_role.name}' at '{guild}'")
 
             for name in to_remove:
                 role = discord.utils.get(guild.roles, name=name)
