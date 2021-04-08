@@ -14,6 +14,7 @@ from tortoise.transactions import atomic
 import asyncio
 import typing
 
+from cogs.cog_utils import guild_ids
 import cogs.cog_utils as utils
 import cogs.db_utils as db_utils
 from cogs.permissions import has_server_perms, has_bot_perms
@@ -22,8 +23,6 @@ logger = logging.getLogger(__name__)
 
 role_number = db_utils.NextNumber()
 group_number = db_utils.NextNumber()
-
-guild_ids = [570257083040137237, 568072142843936778, 329097869070172161]  # TODO REMOVE
 
 
 class Role(Model):

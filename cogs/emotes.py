@@ -14,7 +14,7 @@ import itertools
 from urllib.parse import urlparse
 from pathlib import Path
 
-from cogs.cog_utils import fuzzy_search, abs_join, send_file
+from cogs.cog_utils import fuzzy_search, abs_join, send_file, guild_ids
 import cogs.cog_utils as utils
 from cogs.permissions import has_server_perms, has_bot_perms
 
@@ -26,7 +26,6 @@ def multi_glob(*patterns):
 
 
 image_exts = (".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff")
-guild_ids = [570257083040137237, 568072142843936778, 329097869070172161]  # TODO REMOVE
 
 
 class EmoteConverter(commands.Converter):
