@@ -715,8 +715,10 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         """Adds role to the internal database"""
         if role is None:
             return
+        number = len(role.guild.roles) - role.position
         db_role = Role(name=role.name,
                     color=role.color.value,
+                    number=number,
                     archived=False,
                     assignable=False,
                     mentionable=role.mentionable,
