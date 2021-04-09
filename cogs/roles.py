@@ -120,7 +120,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
                     logger.warning(f"Can't manage role '{db_role.name}' at '{guild}'")
                     continue
 
-                position -= 1
+                position = max(position - 1, 1)
                 try:
                     if role is not None:
                         if not all((role.color == db_role.color,
