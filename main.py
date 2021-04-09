@@ -3,8 +3,6 @@ import json
 import logging
 import os
 from datetime import datetime
-from logging.handlers import SocketHandler
-from cogs.logging_utils import BufferingSocketHandler
 
 import discord
 import nest_asyncio
@@ -13,6 +11,7 @@ from discord_slash import SlashCommand
 from tortoise import Tortoise
 
 import cogs.cog_utils as utils
+from cogs.logging_utils import BufferingSocketHandler
 
 # from cogs.comics import Comics
 # from cogs.converters import Conversions
@@ -35,6 +34,7 @@ async def main():
         config = json.load(f)
     bot.config = config
     bot.owner_ids = set(config["discord"]["owner_ids"])
+    utils.guild_ids = config["discord"]["guild_ids"]
 
     now = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     utils.ensure_dir(utils.abs_join(current_dir, "logs"))
