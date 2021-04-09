@@ -491,6 +491,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
 
     @cog_ext.cog_subcommand(base="role", subcommand_group="snapshot", name="all", guild_ids=guild_ids)
     @has_bot_perms()
+    @atomic()
     async def role_snapshot_all(self, ctx: SlashContext):
         """Adds all existing server roles to the internal database (except roles, that bot cannot manage)"""
         await ctx.defer(hidden=True)
