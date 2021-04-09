@@ -2,11 +2,8 @@ import logging
 
 import discord
 from discord.ext import commands
-from discord_slash import cog_ext, SlashContext
-
-import traceback
-
-from cogs.cog_utils import send_file, abs_join
+from discord_slash import SlashContext
+from tortoise import exceptions as t_exceptions
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +21,9 @@ class Errors(commands.Cog):
             message = '\n'.join(error.args)
         elif isinstance(error, commands.NoPrivateMessage):
             message = "You can use that only in guild!"
+        elif isinstance(error, t_exceptions.OperationalError):
+            await ctx.channel.send("Database connection error, please retry!")
+            return
         else:
             logger.error(f"Unexpected error {repr(error)} occurred:", exc_info=error)
             await ctx.channel.send(f"Unexpected error! "
