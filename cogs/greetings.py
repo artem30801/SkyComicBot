@@ -1,25 +1,24 @@
+import io
 import logging
 import math
 import random
 from datetime import datetime, timedelta
-from dateutil import relativedelta
-from typing import Optional
-
-import io
-from urllib.parse import urlparse
 from pathlib import Path
+from typing import Optional
+from urllib.parse import urlparse
 
 import aiohttp
 import discord
+from dateutil import relativedelta
 from discord.ext import commands
+from discord.ext import tasks
 from discord_slash import cog_ext, SlashContext
-from discord_slash.utils.manage_commands import create_option, create_choice
-
+from discord_slash.utils.manage_commands import create_option
 from tortoise import fields
 from tortoise.models import Model
 
-from cogs.cog_utils import guild_ids
 import cogs.cog_utils as utils
+from cogs.cog_utils import guild_ids
 from cogs.permissions import has_server_perms, has_bot_perms
 
 logger = logging.getLogger(__name__)
@@ -55,13 +54,12 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
 
     async def on_startup(self):
         logger.info(f"Logged in as {self.bot.user}")
-        self._started_at = datetime.now()
 
         guilds_list = [f"[{g.name}: {g.member_count} members]" for g in self.bot.guilds]
         logger.info(f"Current servers: {', '.join(guilds_list)}")
 
         prev_start = self.get_last_startup_time()
-        self.update_last_startup_time()
+        self.update_startup_time_loop.start()
 
         # check home channels
         for guild in self.bot.guilds:
@@ -74,6 +72,11 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
         # Don't send greetings if last startup was less than a 3 hours ago
         if prev_start is None or (self._started_at - prev_start > timedelta(hours=3)):
             await self.send_home_channels_message("Hello hello! I'm back online and ready to work!")
+
+    @tasks.loop(hours=1)
+    async def update_startup_time_loop(self):
+        self._started_at = datetime.now()
+        self.update_last_startup_time()
 
     @commands.Cog.listener()
     async def on_member_join(self, member):
