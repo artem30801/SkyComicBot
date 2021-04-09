@@ -74,6 +74,7 @@ class BufferingSocketHandler(logging.handlers.SocketHandler):
         self.send_buffer()
         success = self._emit(record)
         if not success:
+            record.exc_info = None
             self.buffer.append(record)
 
     def send_buffer(self):
