@@ -14,6 +14,7 @@ from tortoise.transactions import atomic
 import asyncio
 import typing
 
+from cogs.cog_utils import guild_ids
 import cogs.cog_utils as utils
 import cogs.db_utils as db_utils
 from cogs.permissions import has_server_perms, has_bot_perms
@@ -22,8 +23,6 @@ logger = logging.getLogger(__name__)
 
 role_number = db_utils.NextNumber()
 group_number = db_utils.NextNumber()
-
-guild_ids = [570257083040137237, 568072142843936778, 329097869070172161]  # TODO REMOVE
 
 
 class Role(Model):
@@ -114,9 +113,18 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         to_remove = await Role.filter(archived=True).values_list("name", flat=True)
 
         for guild in self.bot.guilds:
+            bot_as_member = guild.get_member(self.bot.user.id)
+            if not bot_as_member.guild_permissions.manage_roles:
+                logger.warning(f"Don't have manage roles permissions in '{guild}'")
+                continue
+
             position = guild.me.top_role.position
             for db_role in db_roles:
                 role = discord.utils.get(guild.roles, name=db_role.name)
+                if not utils.can_manage_role(self.bot, role):
+                    logger.warning(f"Can't manage role '{db_role.name}' at '{guild}'")
+                    continue
+
                 position -= 1
                 try:
                     if role is not None:
@@ -126,7 +134,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
                                                        mentionable=db_role.mentionable)
                         await role.edit(position=position)
                 except discord.errors.Forbidden:
-                    logger.warning(f"Can't setup role {db_role.name} at {guild}")
+                    logger.warning(f"Failed to setup role '{db_role.name}' at '{guild}'")
 
             for name in to_remove:
                 role = discord.utils.get(guild.roles, name=name)
@@ -456,6 +464,54 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
                        hidden=True
                        )
 
+    @cog_ext.cog_subcommand(base="role", subcommand_group="snapshot", name="role",
+                            options=[
+                                create_option(
+                                    name="role",
+                                    description="Role to add",
+                                    option_type=discord.Role,
+                                    required=True
+                                ),
+                            ],
+                            guild_ids=guild_ids)
+    @has_bot_perms()
+    async def role_snapshot_role(self, ctx: SlashContext, role: discord.Role):
+        """Adds existing server role to the internal database (if bot cannot manage this role)"""
+        await ctx.defer(hidden=True)
+        logger.db(f"{self.format_caller(ctx)} trying to snapshot role '{role}' from '{ctx.guild}'")
+        if not utils.can_manage_role(self.bot, role):
+            raise commands.BadArgument(f"Bot cannot manage role '{role}'")
+        if await Role.exists(name=role.name):
+            raise commands.BadArgument(f"DB already have role '{role}'")
+        
+        await self.snapshot_role(role, await self.get_snapshot_group())
+        await ctx.send(f"Added '{role}' role to the internal database", hidden=True)
+
+    @cog_ext.cog_subcommand(base="role", subcommand_group="snapshot", name="all", guild_ids=guild_ids)
+    @has_bot_perms()
+    async def role_snapshot_all(self, ctx: SlashContext):
+        """Adds all existing server roles to the internal database (except roles, that bot cannot manage)"""
+        await ctx.defer(hidden=True)
+        logger.db(f"{self.format_caller(ctx)} trying to snapshot all roles from '{ctx.guild}'")
+        new_roles = []
+        group = None
+        for role in ctx.guild.roles:
+            if role.name == '@everyone':
+                continue
+            if role.is_bot_managed() or role.is_integration():
+                continue
+            if not utils.can_manage_role(self.bot, role):
+                logger.info(f"Skipping role '{role}' since we cannot manage it")
+                continue
+            # TODO: probably we can filter out existing roles more efficiently
+            if await Role.exists(name=role.name):
+                continue
+            group = group or await self.get_snapshot_group()
+            await self.snapshot_role(role, group)
+            new_roles.append(role)
+
+        await ctx.send(f"Added roles: {', '.join([role.mention for role in new_roles])}", hidden=True)
+
     @cog_ext.cog_subcommand(base="role", name="add", guild_ids=guild_ids)
     @has_bot_perms()
     async def role_add(self, ctx: SlashContext, *args, **params):
@@ -650,6 +706,24 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         """Leave 'livestream crew'"""
         await self.streamcrew_join.invoke(ctx, join=False)
 
+    @staticmethod
+    async def get_snapshot_group() -> RoleGroup:
+        """Returns group for the snapshotted roles"""
+        return (await RoleGroup.get_or_create(name=utils.snapshot_role_group))[0]
+
+    async def snapshot_role(self, role: discord.Role, group: RoleGroup):
+        """Adds role to the internal database"""
+        if role is None:
+            return
+        number = len(role.guild.roles) - role.position
+        db_role = Role(name=role.name,
+                    color=role.color.value,
+                    number=number,
+                    archived=False,
+                    assignable=False,
+                    mentionable=role.mentionable,
+                    group=group)
+        await db_role.save()
 
 def setup(bot):
     bot.add_cog(Roles(bot))

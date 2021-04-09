@@ -18,6 +18,7 @@ from discord_slash.utils.manage_commands import create_option, create_choice
 from tortoise import fields
 from tortoise.models import Model
 
+from cogs.cog_utils import guild_ids
 import cogs.cog_utils as utils
 from cogs.permissions import has_server_perms, has_bot_perms
 
@@ -37,9 +38,6 @@ def display_delta(delta):
 class HomeChannels(Model):
     guild_id = fields.BigIntField()
     channel_id = fields.BigIntField(null=True)
-
-
-guild_ids = [570257083040137237, 568072142843936778, 329097869070172161]  # TODO REMOVE
 
 
 class Greetings(utils.AutoLogCog, utils.StartupCog):
