@@ -1,7 +1,9 @@
 venv/
+.idea/
 migrations/
 emotes/
 reactions/
+comic_storage/
 last_startup
 
 *.ini
