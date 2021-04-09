@@ -1,15 +1,15 @@
 import asyncio
-from tortoise import fields
-from tortoise import exceptions as t_exceptions
-from tortoise.functions import Max
-from tortoise.transactions import atomic
+import typing
+from dataclasses import dataclass
 
 import discord
 from discord.ext import commands
 from discord_slash.utils.manage_commands import create_option, create_choice
-
-import typing
-from dataclasses import dataclass
+from tortoise import exceptions as t_exceptions
+from tortoise import fields
+from tortoise import queryset
+from tortoise.functions import Max
+from tortoise.transactions import atomic
 
 import cogs.cog_utils as utils
 
@@ -28,11 +28,11 @@ class NextNumber:
         return (max_number or 0) + 1
 
 
-async def get_max_number(model, number):
+async def get_max_number(model, number=None):
     number = number if number is not None else float('inf')
     number = max(number, 1)
     max_number = (await model.annotate(m=Max("number")).values_list("m", flat=True))[0]
-    number = min(number, (max_number or 0)+1)
+    number = min(number, (max_number or 0) + 1)
     return number
 
 
@@ -129,6 +129,45 @@ async def generate_db_options(model, edit=None):
 
 def model_name(model):
     return model.__name__.lower()
+
+
+async def format_instance(instance, show_name=False):
+    # db_schema = instance.describe(False)
+    # fk_fields = db_schema["fk_fields"]
+    # fk_names = [field["name"] for field in fk_fields]
+
+    out_fields = {}
+    for field_name, value in instance:
+        if "id" in field_name:
+            continue
+        if field_name == "name" and not show_name:
+            continue
+        if isinstance(value, queryset.QuerySet):
+            fk_instance = await value
+            db_schema = fk_instance.describe(False)["data_fields"]
+            use_name = list((filter(lambda x: x["name"] == "name", db_schema)))
+            value = fk_instance.name if use_name else f"number {fk_instance.number}"
+
+        out_fields[field_name] = str(value)
+    return format_dict(out_fields)
+
+
+def chinks_split(string_list, maxchars=2000, add_each=1):
+    count = 0
+    temp_slice = []
+    for item in string_list:
+        count += len(item) + add_each
+        if count <= int(maxchars):
+            temp_slice.append(item)
+        else:
+            yield temp_slice
+            temp_slice = [item]
+            count = len(item) + add_each
+    yield temp_slice
+
+
+def format_dict(d):
+    return ", ".join([f"*{key}*={value}" for key, value in d.items()])
 
 
 class ModelConverter(commands.Converter):

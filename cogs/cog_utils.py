@@ -134,13 +134,10 @@ def can_bot_respond(bot: Bot, channel: discord.TextChannel) -> bool:
 
 def can_manage_role(bot: discord.Member, role: discord.Role) -> bool:
     """Checks, can a bot change assign this role to anybody"""
-    if bot is None or role is None:
-        return False
-
     if not bot.guild_permissions.manage_roles:
         return False
 
-    if bot.top_role.position > role:
+    if bot.top_role > role:
         return True
 
     return False
