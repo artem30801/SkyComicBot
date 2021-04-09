@@ -72,8 +72,8 @@ class StartupCog(commands.Cog):
     @commands.Cog.listener()
     async def on_ready(self):
         if self._first_ready:
-            self._first_ready = False
             await self.on_startup()
+            self._first_ready = False
 
     async def on_startup(self):
         pass

@@ -1,22 +1,20 @@
-import logging
-
-import aiohttp
-import discord
-from discord.ext import commands
-from discord_slash import cog_ext, SlashContext
-from discord_slash.utils.manage_commands import create_option, create_choice
-
-import os
-import sys
-import re
 import glob
 import itertools
-from urllib.parse import urlparse
+import logging
+import os
+import re
+import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
-from cogs.cog_utils import fuzzy_search, abs_join, send_file, guild_ids
+import aiohttp
+from discord.ext import commands
+from discord_slash import cog_ext
+from discord_slash.utils.manage_commands import create_option, create_choice
+
 import cogs.cog_utils as utils
-from cogs.permissions import has_server_perms, has_bot_perms
+from cogs.cog_utils import fuzzy_search, abs_join, send_file, guild_ids
+from cogs.permissions import has_bot_perms
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +59,8 @@ class Emotes(utils.AutoLogCog, utils.StartupCog):
         self.emote_pick.options[0]["choices"] = [create_choice(name=key, value=key) for key in self.emotes.keys()][:25]
 
         logger.debug(f"Loaded emotes: {self.emotes}")
-        await self.bot.slash.sync_all_commands()
+        if not self._first_ready:
+            await self.bot.slash.sync_all_commands()
 
     @cog_ext.cog_subcommand(base="emote", name="send",
                             options=[
