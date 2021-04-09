@@ -402,8 +402,15 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
     @commands.guild_only()
     async def role_assign(self, ctx: SlashContext, role: discord.Role, member: discord.Member = None):
         """Assign specified role to you or specified member"""
+        await ctx.defer(hidden=True)
         member = member or ctx.author
         logger.info(f"{self.format_caller(ctx)} trying to assign '{role}' to {member}")
+
+        if role in member.roles:
+            await ctx.send(f"Looks like you already have {role.mention} role ;)",
+                           allowed_mentions=discord.AllowedMentions.none(),
+                           hidden=True)
+            return
 
         try:
             db_role = await Role.get(name=role.name)
@@ -422,6 +429,12 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         if group.exclusive:
             logger.info(f"Removing roles, conflicting with {role}")
             await self.remove_conflicting_roles(ctx, member, group)
+
+        if not utils.can_manage_role(ctx.guild.me, role):
+            await ctx.send(f"Sorry, I cannot manage role {role.mention}",
+                           allowed_mentions=discord.AllowedMentions.none(),
+                           hidden=True)
+            return
 
         await member.add_roles(role)
         logger.info(f"Assigned role '{role}' to {member}")
@@ -451,6 +464,12 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         member = member or ctx.author
         logger.info(f"{self.format_caller(ctx)} trying to remove role '{role}' from {member}")
 
+        if role not in member.roles:
+            await ctx.send(f"Looks like don't have {role.mention} role anyways ;)",
+                           allowed_mentions=discord.AllowedMentions.none(),
+                           hidden=True)
+            return
+
         try:
             db_role = await Role.get(name=role.name)
         except exceptions.DoesNotExist:
@@ -462,6 +481,10 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
             logger.info(f"{self.format_caller(ctx)} don't have permissions to remove '{role}' from {member}")
             # MissingPermissions expects an array of permissions
             raise commands.MissingPermissions([utils.bot_manager_role])
+
+        if not utils.can_manage_role(ctx.guild.me, role):
+            await ctx.send(f"Sorry, I cannot manage role '{role}'", hidden=True)
+            return
 
         await member.remove_roles(role)
         logger.info(f"Removed role '{role}' from {member}")
