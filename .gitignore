@@ -2,8 +2,11 @@ venv/
 .idea/
 migrations/
 emotes/
+misc/
 reactions/
 comic_storage/
+
+settings.py
 last_startup
 
 *.ini
