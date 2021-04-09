@@ -375,7 +375,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
 
         if archive and utils.bot_manager_role in [role.name for role in await group.roles]:
             logger.warning(f"Failed to archive group '{group.name}'")
-            raise commands.BadArgument(f"Cannot archive role group **{group.name}**! Nope!")
+            raise commands.BadArgument(f"Cannot archive role group **{group.name}** with bot manager role! Nope!")
 
         await Role.filter(group=group).update(archived=archive)
         await self.update_guilds_roles()
