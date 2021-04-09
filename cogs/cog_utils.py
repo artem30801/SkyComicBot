@@ -9,7 +9,7 @@ from fuzzywuzzy import fuzz
 from fuzzywuzzy import process
 
 embed_color = 0x72a3f2
-bot_manager_role = "Bot manager"
+bot_manager_role = "skybox manager"
 stream_crew_role = "livestream crew"
 snapshot_role_group = "Snapshot"
 db_log_level = 25

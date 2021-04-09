@@ -3,15 +3,12 @@ import logging
 import discord
 from discord.ext import commands
 from discord_slash import cog_ext, SlashContext
-from discord_slash.utils.manage_commands import create_option, create_choice
-
-import tortoise
-from tortoise.models import Model
+from discord_slash.utils.manage_commands import create_option
 from tortoise import fields
+from tortoise.models import Model
 
-from cogs.cog_utils import guild_ids
 import cogs.cog_utils as utils
-
+from cogs.cog_utils import guild_ids
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +40,7 @@ def is_whitelisted():
 
 def has_server_perms():
     """Perms to manage other people on the server"""
-    return commands.check_any(is_guild_owner(), commands.is_owner(), commands.has_role("Bot manager"))
+    return commands.check_any(is_guild_owner(), commands.is_owner(), commands.has_role(utils.bot_manager_role))
 
 
 def has_bot_perms():
