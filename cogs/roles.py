@@ -113,15 +113,15 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         to_remove = await Role.filter(archived=True).values_list("name", flat=True)
 
         for guild in self.bot.guilds:
-            bot_as_member = guild.get_member(self.bot.user.id)
-            if not bot_as_member.guild_permissions.manage_roles:
+            me = guild.me
+            if not me.guild_permissions.manage_roles:
                 logger.warning(f"Don't have manage roles permissions in '{guild}'")
                 continue
 
-            position = guild.me.top_role.position
+            position = me.top_role.position
             for db_role in db_roles:
                 role = discord.utils.get(guild.roles, name=db_role.name)
-                if not utils.can_manage_role(self.bot, role):
+                if not utils.can_manage_role(me, role):
                     logger.warning(f"Can't manage role '{db_role.name}' at '{guild}'")
                     continue
 
@@ -142,7 +142,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
                     try:
                         await role.delete()
                     except discord.errors.Forbidden:
-                        logger.warning(f"Can't delete role {name} at {guild}")
+                        logger.warning(f"Failed delete role {name} at {guild}")
 
     async def rename_guilds_roles(self, old_name, name):
         for guild in self.bot.guilds:
@@ -468,7 +468,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
                             options=[
                                 create_option(
                                     name="role",
-                                    description="Role to add",
+                                    description="Role to snapshot (add)",
                                     option_type=discord.Role,
                                     required=True
                                 ),
@@ -479,12 +479,12 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         """Adds existing server role to the internal database (if bot cannot manage this role)"""
         await ctx.defer(hidden=True)
         logger.db(f"{self.format_caller(ctx)} trying to snapshot role '{role}' from '{ctx.guild}'")
-        if not utils.can_manage_role(self.bot, role):
+        if not utils.can_manage_role(ctx.guild.me, role):
             raise commands.BadArgument(f"Bot cannot manage role '{role}'")
         if await Role.exists(name=role.name):
-            raise commands.BadArgument(f"DB already have role '{role}'")
-        
-        await self.snapshot_role(role, await self.get_snapshot_group())
+            raise commands.BadArgument(f"Role '{role}' already exists in DB")
+
+        await self.snapshot_role(role)
         await ctx.send(f"Added '{role}' role to the internal database", hidden=True)
 
     @cog_ext.cog_subcommand(base="role", subcommand_group="snapshot", name="all", guild_ids=guild_ids)
@@ -494,20 +494,16 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         await ctx.defer(hidden=True)
         logger.db(f"{self.format_caller(ctx)} trying to snapshot all roles from '{ctx.guild}'")
         new_roles = []
-        group = None
-        for role in ctx.guild.roles:
-            if role.name == '@everyone':
-                continue
+        for role in ctx.guild.roles[1:]:  # to exclude @everyone
             if role.is_bot_managed() or role.is_integration():
                 continue
-            if not utils.can_manage_role(self.bot, role):
+            if not utils.can_manage_role(ctx.guild.me, role):
                 logger.info(f"Skipping role '{role}' since we cannot manage it")
                 continue
-            # TODO: probably we can filter out existing roles more efficiently
+
             if await Role.exists(name=role.name):
                 continue
-            group = group or await self.get_snapshot_group()
-            await self.snapshot_role(role, group)
+            await self.snapshot_role(role)
             new_roles.append(role)
 
         await ctx.send(f"Added roles: {', '.join([role.mention for role in new_roles])}", hidden=True)
@@ -711,11 +707,14 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         """Returns group for the snapshotted roles"""
         return (await RoleGroup.get_or_create(name=utils.snapshot_role_group))[0]
 
-    async def snapshot_role(self, role: discord.Role, group: RoleGroup):
+    async def snapshot_role(self, role: discord.Role, group: RoleGroup = None):
         """Adds role to the internal database"""
         if role is None:
             return
-        number = len(role.guild.roles) - role.position
+
+        group = group or await self.get_snapshot_group()
+        number = len(role.guild.roles) - role.position  # do we really need it?
+        await db_utils.reshuffle(Role, number)
         db_role = Role(name=role.name,
                     color=role.color.value,
                     number=number,
@@ -724,6 +723,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
                     mentionable=role.mentionable,
                     group=group)
         await db_role.save()
+
 
 def setup(bot):
     bot.add_cog(Roles(bot))
