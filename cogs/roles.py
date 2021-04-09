@@ -572,7 +572,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         params = await db_utils.process(Role, params, fk_dict)
         role = params.pop("role")
 
-        if "archived" in params and role.name == utils.bot_manager_role and params["archive"]:
+        if "archived" in params and role.name == utils.bot_manager_role and params["archived"]:
             logger.warning("Trying to archive bot manager role")
             raise commands.MissingPermissions(["I won't archive Bot manager role, lol. Nope."])
 
