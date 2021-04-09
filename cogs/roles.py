@@ -206,13 +206,16 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
 
     @cog_ext.cog_subcommand(base="role", name="list", guild_ids=guild_ids)
     async def role_list(self, ctx: SlashContext):
-        """Shows list of all available roles. Roles are grouped by role group"""
+        """Shows list of all roles available to you. Roles are grouped by role group"""
         embed = discord.Embed(title="Available roles:", color=utils.embed_color)
         db_groups = await RoleGroup.all()
         for group in db_groups:
             if await self.get_group_state(group) != RoleGroupStates.normal:
                 continue
-            db_roles = await Role.filter(group=group, archived=False).values_list("name", flat=True)
+            query = Role.filter(group=group, archived=False)
+            if not has_server_perms():
+                query = query.filter(assignable=True)
+            db_roles = await query.values_list("name", flat=True)
             role_mentions = [self.get_role_repr(ctx, role) for role in db_roles]
             embed.add_field(name=group.name, value="\n".join(role_mentions), inline=True)
         if not embed.fields:
@@ -271,7 +274,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
             if state == RoleGroupStates.normal:
                 role_count = len(await group.roles)
                 state = f"has {role_count} assigned role{'s' if role_count > 1 else ''}"
-            return f"{name} *({state}, exclusive={group.exclusive})*"
+            return f"{name} *({state})* {await db_utils.format_instance(group)}"
 
         db_groups = await RoleGroup.all()
         await ctx.send("Available role groups (by internal DB): \n" +
@@ -288,7 +291,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         instance = await RoleGroup.create(**params)
         logger.db(f"Added role group '{instance.name}' with  params '{params}'")
 
-        await ctx.send(f"Successfully added role group **{instance.name}** *(exclusive={instance.exclusive})*",
+        await ctx.send(f"Successfully added role group **{instance.name}**; {await db_utils.format_instance(instance)}",
                        hidden=True)
         await self.update_options()
 
@@ -517,7 +520,8 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         await self.update_guilds_roles()
 
         logger.db(f"Added role '{instance.name}' with  params '{params}'")
-        await ctx.send(f"Created role {self.get_role_repr(ctx, params['name'])} *{instance})*",
+        await ctx.send(f"Created role {self.get_role_repr(ctx, params['name'])}; "
+                       f"{await db_utils.format_instance(instance)}",
                        allowed_mentions=discord.AllowedMentions.none(),
                        hidden=True)
 

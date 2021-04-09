@@ -132,10 +132,6 @@ def model_name(model):
 
 
 async def format_instance(instance, show_name=False):
-    # db_schema = instance.describe(False)
-    # fk_fields = db_schema["fk_fields"]
-    # fk_names = [field["name"] for field in fk_fields]
-
     out_fields = {}
     for field_name, value in instance:
         if "id" in field_name:
@@ -147,6 +143,8 @@ async def format_instance(instance, show_name=False):
             db_schema = fk_instance.describe(False)["data_fields"]
             use_name = list((filter(lambda x: x["name"] == "name", db_schema)))
             value = fk_instance.name if use_name else f"number {fk_instance.number}"
+        if isinstance(value, fields.ReverseRelation):
+            value = f"{len(await value)} {field_name}"
 
         out_fields[field_name] = str(value)
     return format_dict(out_fields)
