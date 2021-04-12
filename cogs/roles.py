@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 
 import discord
 from discord.ext import commands
@@ -511,11 +512,12 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
                             ],
                             guild_ids=guild_ids)
     @has_bot_perms()
-    async def role_snapshot_role(self, ctx: SlashContext, role: discord.Role, group: int = -1):
+    async def role_snapshot_role(self, ctx: SlashContext, role: discord.Role, group:  Optional[int] = None):
         """Adds existing server role to the internal database (if bot cannot manage this role)"""
         logger.db(f"{self.format_caller(ctx)} trying to snapshot role '{role}' from '{ctx.guild}'")
         # await ctx.defer(hidden=True)
-        group = await RoleGroup.get_or_none(id=group)
+        if group:
+            group = await RoleGroup.get_or_none(id=group)
         await self.snapshot_role(ctx, role, group)
         await ctx.send(f"Added '{role}' role to the internal database", hidden=True)
         await self.update_guilds_roles()
@@ -532,13 +534,16 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
                             guild_ids=guild_ids)
     @has_bot_perms()
     @atomic()
-    async def role_snapshot_all(self, ctx: SlashContext, group: int = -1):
+    async def role_snapshot_all(self, ctx: SlashContext, group: Optional[int] = None):
         """Adds all existing server roles to the internal database (except roles, that bot cannot manage)"""
         await ctx.defer(hidden=True)
         logger.db(f"{self.format_caller(ctx)} trying to snapshot all roles from '{ctx.guild}'")
-        new_roles = []
-        group = await RoleGroup.get_or_none(id=group)
+
+        if group:
+            group = await RoleGroup.get_or_none(id=group)
         group = group or (await RoleGroup.get_or_create(name=utils.snapshot_role_group))[0]
+        
+        new_roles = []
         for role in reversed(ctx.guild.roles[1:]):  # to exclude @everyone
             try:
                 await self.snapshot_role(ctx, role, group)
