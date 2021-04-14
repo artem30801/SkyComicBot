@@ -29,10 +29,12 @@ async def main():
     SlashCommand(bot, override_type=True)
 
     current_dir = os.path.dirname(os.path.realpath(__file__))
+    bot.current_dir = current_dir
 
     with open(utils.abs_join(current_dir, "config.json"), "r") as f:
         config = json.load(f)
     bot.config = config
+
     bot.owner_ids = set(config["discord"]["owner_ids"])
     utils.guild_ids = config["discord"]["guild_ids"]
 
