@@ -1,11 +1,8 @@
 import logging
+import re
 
 import discord
 from discord.ext import commands
-
-import re
-import os
-import sys
 
 from cogs.cog_utils import abs_join, send_file
 
@@ -22,7 +19,6 @@ class Reactions(commands.Cog):
     # :griffin_hug:
     def __init__(self, bot):
         self.bot = bot
-        self.current_dir = os.path.abspath(os.path.dirname(sys.argv[0]))
         self._reactions = {("telling", ): self.telling,
                            ("wrong layer", "wrong\\s[\\w]+\\slayer"): self.wrong_layer,
                            ("hug", "hugs"): self.hug}
@@ -32,6 +28,9 @@ class Reactions(commands.Cog):
         if message.guild is not None and message.channel.name == "real-life-talk":
             return
 
+        if message.author.bot:
+            return
+
         for keys, react in self._reactions.items():
             if any(contains_word(message.content, key) for key in keys):
                 logging.debug(f"Reacted to {message.content} message (contains {keys})")
@@ -39,10 +38,12 @@ class Reactions(commands.Cog):
                 break
 
     async def telling(self, message):
-        await send_file(message.channel, abs_join(self.current_dir, "reactions", "telling.gif"), "thatwouldbetelling.gif")
+        await send_file(message.channel, abs_join(self.bot.current_dir, "reactions", "telling.gif"),
+                        "thatwouldbetelling.gif")
 
     async def wrong_layer(self, message):
-        await send_file(message.channel, abs_join(self.current_dir, "reactions", "wrong_layer.gif"), "wronglayersong.gif")
+        await send_file(message.channel, abs_join(self.bot.current_dir, "reactions", "wrong_layer.gif"),
+                        "wronglayersong.gif")
 
     async def hug(self, message):
         collection = self.bot.emojis
