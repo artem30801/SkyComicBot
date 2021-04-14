@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 
 import discord
 from discord.ext import commands
@@ -89,9 +90,10 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         self.role_edit.options = await db_utils.generate_db_options(Role, edit="role")
 
         group_choices = [create_choice(name=group.name, value=group.id) for group in await RoleGroup.all()][:25]
-        group_commands = [self.group_info, self.group_delete, self.group_archive]
+        group_commands = [self.group_info, self.group_delete, self.group_archive, self.role_snapshot_all]
         for command in group_commands:
             command.options[0]["choices"] = group_choices
+        self.role_snapshot_role.options[1]["choices"] = group_choices
 
         if self._sider_group is None:
             self._sider_group = await RoleGroup.get_or_none(name="Sider")
@@ -501,26 +503,47 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
                                     option_type=discord.Role,
                                     required=True
                                 ),
+                                create_option(
+                                    name="group",
+                                    description="Group to add role to (Snapshot group by default)",
+                                    option_type=int,
+                                    required=False
+                                )
                             ],
                             guild_ids=guild_ids)
     @has_bot_perms()
-    async def role_snapshot_role(self, ctx: SlashContext, role: discord.Role):
+    async def role_snapshot_role(self, ctx: SlashContext, role: discord.Role, group:  Optional[int] = None):
         """Adds existing server role to the internal database (if bot cannot manage this role)"""
         logger.db(f"{self.format_caller(ctx)} trying to snapshot role '{role}' from '{ctx.guild}'")
         # await ctx.defer(hidden=True)
-        await self.snapshot_role(ctx, role)
+        if group:
+            group = await RoleGroup.get_or_none(id=group)
+        await self.snapshot_role(ctx, role, group)
         await ctx.send(f"Added '{role}' role to the internal database", hidden=True)
         await self.update_guilds_roles()
 
-    @cog_ext.cog_subcommand(base="role", subcommand_group="snapshot", name="all", guild_ids=guild_ids)
+    @cog_ext.cog_subcommand(base="role", subcommand_group="snapshot", name="all",
+                            options=[
+                                create_option(
+                                    name="group",
+                                    description="Group to add role to (Snapshot group by default)",
+                                    option_type=int,
+                                    required=False
+                                )
+                            ],
+                            guild_ids=guild_ids)
     @has_bot_perms()
     @atomic()
-    async def role_snapshot_all(self, ctx: SlashContext):
+    async def role_snapshot_all(self, ctx: SlashContext, group: Optional[int] = None):
         """Adds all existing server roles to the internal database (except roles, that bot cannot manage)"""
         await ctx.defer(hidden=True)
         logger.db(f"{self.format_caller(ctx)} trying to snapshot all roles from '{ctx.guild}'")
+
+        if group:
+            group = await RoleGroup.get_or_none(id=group)
+        group = group or (await RoleGroup.get_or_create(name=utils.snapshot_role_group))[0]
+        
         new_roles = []
-        group = (await RoleGroup.get_or_create(name=utils.snapshot_role_group))[0]
         for role in reversed(ctx.guild.roles[1:]):  # to exclude @everyone
             try:
                 await self.snapshot_role(ctx, role, group)

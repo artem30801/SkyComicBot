@@ -82,7 +82,7 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
     async def on_member_join(self, member):
         channel = await self.get_home_channel(member.guild)
         if utils.can_bot_respond(self.bot, channel):
-            await channel.send(f"{self.get_greeting(member)} Welcome!")
+            await channel.send(f"{self.get_greeting(member)}\nWelcome!")
             logger.info(f"Greeted new guild member {member}")
 
     @classmethod
