@@ -350,6 +350,11 @@ class Conversions(utils.AutoLogCog):
                 return None, None, TimezoneInputType.InvalidData
 
             result_type = TimezoneInputType.ValidTimezone
+        
+        if timezone == "PST":
+            timezone = "PDT"
+        if timezone == "CST":
+            timezone = "CDT"
 
         diff = await self.timezones_diff("UTC", timezone)
         result_type = result_type if diff is not None else TimezoneInputType.InvalidData
