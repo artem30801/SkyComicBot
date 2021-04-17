@@ -247,13 +247,13 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
              "Oh! Hello there, you must be {}.",
              "G'day, {}!",
              "Howdy, {}",
-             "Origato, {}-san",
+             "Arigato, {}-san",
              "Hoi, {}",
              ]
         message = random.choice(greetings).format(member.display_name)
 
         if self._last_greeted_member is not None and self._last_greeted_member.id == member.id:
-            message = f"{message} This feels oddly familiar..."
+            message = f"{message}\nThis feels oddly familiar..."
 
         self._last_greeted_member = member
         return message
