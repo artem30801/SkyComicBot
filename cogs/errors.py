@@ -9,6 +9,12 @@ logger = logging.getLogger(__name__)
 
 
 class Errors(commands.Cog):
+
+    def __init__(self, bot):
+        self.should_ping_on_error = True
+        if 'ping_on_error' in bot.config['discord']:
+            self.should_ping_on_error = bot.config['discord']['ping_on_error']
+
     @commands.Cog.listener()
     async def on_slash_command_error(self, ctx: SlashContext, error):
         if isinstance(error, commands.CommandOnCooldown):
@@ -26,8 +32,9 @@ class Errors(commands.Cog):
             return
         else:
             logger.error(f"Unexpected error {repr(error)} occurred:", exc_info=error)
-            await ctx.channel.send(f"Unexpected error! "
-                                   f"{(await ctx.bot.fetch_user(246333265495982080)).mention} come and fix me!")
+            if self.should_ping_on_error:
+                await ctx.channel.send(f"Unexpected error! "
+                                       f"{(await ctx.bot.fetch_user(246333265495982080)).mention} come and fix me!")
             # await send_file(ctx.channel, abs_join("misc", "code.jpg"), "code.jpg")
             return
 
