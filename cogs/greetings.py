@@ -42,15 +42,16 @@ class HomeChannels(Model):
 class Greetings(utils.AutoLogCog, utils.StartupCog):
     """Simple greetings and welcome commands"""
 
-    startup_file_name = "last_startup"
-    startup_time_format = "%H:%M %d.%m.%Y"
+    activity_time_format = "%H:%M %d.%m.%Y"
 
     def __init__(self, bot):
         utils.StartupCog.__init__(self)
         utils.AutoLogCog.__init__(self, logger)
         self.bot = bot
+        self.activity_file_path = utils.abs_join(bot.current_dir, "last_activity")
         self._last_greeted_member = None
         self._started_at = None
+        self._last_active_at = None
 
     async def on_startup(self):
         logger.info(f"Logged in as {self.bot.user}")
@@ -58,8 +59,9 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
         guilds_list = [f"[{g.name}: {g.member_count} members]" for g in self.bot.guilds]
         logger.info(f"Current servers: {', '.join(guilds_list)}")
 
-        prev_start = self.get_last_startup_time()
-        self.update_startup_time_loop.start()
+        last_activity = self.get_last_activity_time()
+        self._started_at = datetime.utcnow()
+        self.update_activity_time_loop.start()
 
         # check home channels
         for guild in self.bot.guilds:
@@ -69,14 +71,14 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
                 logger.warning(f"Bot can't send messages to home channel #{channel.name} at '{guild.name}'")
                 continue
 
-        # Don't send greetings if last startup was less than a 3 hours ago
-        if prev_start is None or (self._started_at - prev_start > timedelta(hours=3)):
+        # Don't send greetings if last activity was less than a 3 hours ago
+        if last_activity is None or (self._last_active_at - last_activity > timedelta(hours=3)):
             await self.send_home_channels_message("Hello hello! I'm back online and ready to work!")
 
     @tasks.loop(hours=1)
-    async def update_startup_time_loop(self):
-        self._started_at = datetime.now()
-        self.update_last_startup_time()
+    async def update_activity_time_loop(self):
+        self._last_active_at = datetime.utcnow()
+        self.update_last_activity_time()
 
     @commands.Cog.listener()
     async def on_member_join(self, member):
@@ -85,18 +87,17 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
             await channel.send(f"{self.get_greeting(member)}\nWelcome!")
             logger.info(f"Greeted new guild member {member}")
 
-    @classmethod
-    def get_last_startup_time(cls) -> Optional[datetime]:
+    def get_last_activity_time(self) -> Optional[datetime]:
         try:
-            with open(cls.startup_file_name, 'r') as startup_time_file:
-                return datetime.strptime(startup_time_file.read(), cls.startup_time_format)
+            with open(self.activity_file_path, 'r') as startup_time_file:
+                return datetime.strptime(startup_time_file.read(), self.activity_time_format)
         except (ValueError, OSError):
             return None
 
-    def update_last_startup_time(self):
+    def update_last_activity_time(self):
         """writes to the startup file current _started_at file"""
-        with open(self.startup_file_name, 'w') as startup_time_file:
-            startup_time_file.write(self._started_at.strftime(self.startup_time_format))
+        with open(self.activity_file_path, 'w') as startup_time_file:
+            startup_time_file.write(self._last_active_at.strftime(self.activity_time_format))
 
     @cog_ext.cog_subcommand(base="home", name="notify",
                             options=[
@@ -178,7 +179,7 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
 
         cmd_response = f"Moving to the {new_home.mention}."
         if not utils.can_bot_respond(ctx.bot, new_home):
-            logger.db(f"Bot is muted at the new home channel")
+            logger.db("Bot is muted at the new home channel")
             cmd_response += ".. You know I'm muted there, right? -_-"
 
         await ctx.send(cmd_response, hidden=True)
@@ -275,9 +276,9 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
     @cog_ext.cog_slash(guild_ids=guild_ids)
     async def uptime(self, ctx: SlashContext):
         """Shows how long the bot was running for."""
-        now = datetime.now()
+        now = datetime.utcnow()
         delta = relativedelta.relativedelta(now, self._started_at)
-        await ctx.send(f"I was up and running since {self._started_at.strftime('%d/%m/%Y, %H:%M:%S')} "
+        await ctx.send(f"I was up and running since {self._started_at.strftime('%d/%m/%Y, %H:%M:%S')} (GMT) "
                        f"for {display_delta(delta)}")
 
     @cog_ext.cog_slash(guild_ids=guild_ids)

@@ -7,7 +7,7 @@ reactions/
 comic_storage/
 
 settings.py
-last_startup
+last_activity
 
 *.ini
 *.log
