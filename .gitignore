@@ -17,5 +17,8 @@ last_activity
 .vscode/
 *.code-workspace
 
+#pylint files
+pylintrc
+
 # Temp files
 __pycache__/
