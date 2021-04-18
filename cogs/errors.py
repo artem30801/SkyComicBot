@@ -51,13 +51,17 @@ class Errors(commands.Cog):
         except RoleNotFound:
             mention = (await ctx.bot.fetch_user(246333265495982080)).mention
         
+        if random.random() < 0.005:
+            return f":sparkles: Congrats! You've caught a shiny error message! :sparkles:\n{mention}, come and fix me!"
+
         message = [
             "{}, we have a problem!",
             "{}, hjelp",
             "{}, something went wrong",
             "Whoops, {}, I've caught an error!",
             "Uhh, {}, help me!",
-            "{}, I need a fix!",
+            "{}, fix me!",
+            "{}, halp",
             "{}, I've got an error!",
             "{}, something is broken!",
             "{}, h̵͚̍͝ȅ̵̢̠͠l̴̜̪̿ṕ̸̫",
