@@ -15,6 +15,7 @@ embed_color = 0x72a3f2
 bot_manager_role = "skybox manager"
 stream_crew_role = "livestream crew"
 update_crew_role = "update crew"
+developer_role = "coroutine"
 snapshot_role_group = "Snapshot"
 db_log_level = 25
 important_log_level = 29
