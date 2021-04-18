@@ -80,12 +80,12 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
         self._last_active_at = datetime.utcnow()
         self.update_last_activity_time()
 
-    @commands.Cog.listener()
-    async def on_member_join(self, member):
-        channel = await self.get_home_channel(member.guild)
-        if utils.can_bot_respond(self.bot, channel):
-            await channel.send(f"{self.get_greeting(member)}\nWelcome!")
-            logger.info(f"Greeted new guild member {member}")
+    # @commands.Cog.listener()
+    # async def on_member_join(self, member):
+    #     channel = await self.get_home_channel(member.guild)
+    #     if utils.can_bot_respond(self.bot, channel):
+    #         await channel.send(f"{self.get_greeting(member)}\nWelcome!")
+    #         logger.info(f"Greeted new guild member {member}")
 
     def get_last_activity_time(self) -> Optional[datetime]:
         try:
