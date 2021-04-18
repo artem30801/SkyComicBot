@@ -14,11 +14,10 @@ from discord.ext import commands
 from discord.ext import tasks
 from discord_slash import cog_ext, SlashContext
 from discord_slash.utils.manage_commands import create_option
-from tortoise import fields
-from tortoise.models import Model
 
 import cogs.cog_utils as utils
 from cogs.cog_utils import guild_ids
+from cogs.models import HomeChannels
 from cogs.permissions import has_server_perms, has_bot_perms
 
 logger = logging.getLogger(__name__)
@@ -32,11 +31,6 @@ def display_delta(delta):
          "second": delta.seconds,
          }
     return ", ".join([f"{value} {key + 's' if value > 1 else key}" for key, value in d.items() if value > 0])
-
-
-class HomeChannels(Model):
-    guild_id = fields.BigIntField()
-    channel_id = fields.BigIntField(null=True)
 
 
 class Greetings(utils.AutoLogCog, utils.StartupCog):
@@ -65,7 +59,7 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
 
         # check home channels
         for guild in self.bot.guilds:
-            channel = await self.get_home_channel(guild)
+            channel = await utils.get_home_channel(guild)
 
             if not utils.can_bot_respond(self.bot, channel) and channel is not None:
                 logger.warning(f"Bot can't send messages to home channel #{channel.name} at '{guild.name}'")
@@ -136,7 +130,7 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
     @cog_ext.cog_subcommand(base="home", name="where", guild_ids=guild_ids)
     async def home_channel_where(self, ctx: SlashContext):
         """Shows where current home of the bot in this server is."""
-        current_home = await self.get_home_channel(ctx.guild)
+        current_home = await utils.get_home_channel(ctx.guild)
         if current_home is None:
             await ctx.send("I'm homeless T_T", hidden=True)
         else:
@@ -166,7 +160,7 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
             await ctx.send("Hey! That's not a text channel!", hidden=True)
             return
 
-        current_home = await self.get_home_channel(ctx.guild)
+        current_home = await utils.get_home_channel(ctx.guild)
 
         if current_home == new_home:
             logger.db(f"'{new_home}' is already a home channel")
@@ -196,7 +190,7 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
         """Resets home channel for the bot"""
         logger.db(f"{self.format_caller(ctx)} trying to reset home channel at guild '{ctx.guild}'")
 
-        old_home = await self.get_home_channel(ctx.guild)
+        old_home = await utils.get_home_channel(ctx.guild)
 
         if old_home is None:
             logger.db(f"Bot already has no home channel at '{ctx.guild}'")
@@ -217,18 +211,9 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
         channel_id = channel.id if channel is not None else None
         await HomeChannels.update_or_create(guild_id=guild.id, defaults={"channel_id": channel_id})
 
-    @staticmethod
-    async def get_home_channel(guild: discord.Guild) -> discord.TextChannel:
-        home_channel = await HomeChannels.get_or_none(guild_id=guild.id)
-        if home_channel is None:
-            return guild.system_channel
-        if home_channel.channel_id is None:
-            return None
-        return guild.get_channel(home_channel.channel_id)
-
     async def send_home_channels_message(self, message: str, attachment=None, attachment_name=""):
         for guild in self.bot.guilds:
-            channel = await self.get_home_channel(guild)
+            channel = await utils.get_home_channel(guild)
             if utils.can_bot_respond(self.bot, channel):
                 file = discord.File(io.BytesIO(attachment), attachment_name) if attachment is not None else None
                 await channel.send(message, file=file)

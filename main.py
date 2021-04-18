@@ -75,7 +75,7 @@ async def main():
     bot.load_extension("cogs.emotes")
     bot.load_extension("cogs.roles")
 
-    models = ["cogs.greetings", "cogs.permissions", "cogs.roles", "cogs.converters", ]  # "cogs.comics",
+    models = ["cogs.greetings", "cogs.permissions", "cogs.roles", "cogs.converters", "cogs.models", ]  # "cogs.comics",
     try:
         # db_url="sqlite://skybot.db"
         await Tortoise.init(db_url=bot.config["auth"]["db_url"],

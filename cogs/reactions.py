@@ -1,10 +1,17 @@
 import logging
+import random
 import re
 
 import discord
+from discord import Message
 from discord.ext import commands
+from discord.ext.commands.errors import RoleNotFound
 
 from cogs.cog_utils import abs_join, send_file
+import cogs.cog_utils as utils
+
+
+logger = logging.getLogger(__name__)
 
 
 def contains_word(message: str, word: str) -> bool:
@@ -16,7 +23,10 @@ def contains_word(message: str, word: str) -> bool:
 
 class Reactions(commands.Cog):
     """Automatic context reactions"""
-    # :griffin_hug:
+    
+    real_life_channel_id = 689301702096191537
+    updates_channel_id = 329098775228448769
+
     def __init__(self, bot):
         self.bot = bot
         self._reactions = {("telling", ): self.telling,
@@ -24,16 +34,26 @@ class Reactions(commands.Cog):
                            ("hug", "hugs"): self.hug}
 
     @commands.Cog.listener()
-    async def on_message(self, message):
-        if message.guild is not None and message.channel.name == "real-life-talk":
+    async def on_message(self, message: Message):
+        if message.author.bot:
             return
 
-        if message.author.bot:
+        if message.guild and message.channel and message.channel.id == self.real_life_channel_id:
+            return
+
+        if message.guild and message.channel and message.channel.id == self.updates_channel_id:
+            logger.info("Reacted on update")
+            home_channel = await utils.get_home_channel(message.guild)
+            try:
+                role = await commands.RoleConverter().convert(message, utils.update_crew_role)
+            except RoleNotFound:
+                role = None
+            await home_channel.send(self.get_update_message(role.mention if role else "Folks", message.channel.mention))
             return
 
         for keys, react in self._reactions.items():
             if any(contains_word(message.content, key) for key in keys):
-                logging.debug(f"Reacted to {message.content} message (contains {keys})")
+                logger.debug(f"Reacted to {message.content} message (contains {keys})")
                 await react(message)
                 break
 
@@ -49,6 +69,19 @@ class Reactions(commands.Cog):
         collection = self.bot.emojis
         emoji = discord.utils.get(collection, name='griffin_hug')
         await message.add_reaction(emoji)
+    
+    @staticmethod
+    def get_update_message(update_role, update_channel) -> str:
+        notification = [
+            "{}, update is here! Check {}",
+            "{}, check the {}, there is an update!",
+            "{}, cool stuff arrived to {}!",
+            "{}, all to the {}, new update!",
+            "{}, hey-hey-hey, new part in {}!",
+            "{}, there is an update in {}!",
+            "{}, update has arrived! Check {}",
+        ]
+        return random.choice(notification).format(update_role, update_channel)
 
 
 def setup(bot):

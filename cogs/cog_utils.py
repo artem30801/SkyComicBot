@@ -2,19 +2,23 @@ import logging
 import os
 
 import discord
+from discord import Guild, TextChannel, Member, Role
 from discord.ext import commands
 from discord.ext.commands import Bot
 from discord_slash import SlashContext
 from fuzzywuzzy import fuzz
 from fuzzywuzzy import process
 
+from cogs.models import HomeChannels
+
 embed_color = 0x72a3f2
 bot_manager_role = "skybox manager"
 stream_crew_role = "livestream crew"
+update_crew_role = "update crew"
 snapshot_role_group = "Snapshot"
 db_log_level = 25
 important_log_level = 29
-guild_ids = [570257083040137237, 568072142843936778, 329097869070172161]  # TODO REMOVE
+guild_ids = None  # Set in main.py
 
 
 class AutoLogCog(commands.Cog):
@@ -122,7 +126,7 @@ def url_hostname(url):
     return url.split("//")[-1].split("/")[0].split('?')[0]
 
 
-def can_bot_respond(bot: Bot, channel: discord.TextChannel) -> bool:
+def can_bot_respond(bot: Bot, channel: TextChannel) -> bool:
     """Checks, can a bot send messages to this channel"""
     if bot is None or channel is None:
         return False
@@ -132,7 +136,16 @@ def can_bot_respond(bot: Bot, channel: discord.TextChannel) -> bool:
     return permissions.send_messages
 
 
-def can_manage_role(bot: discord.Member, role: discord.Role) -> bool:
+async def get_home_channel(guild: Guild) -> TextChannel:
+    home_channel = await HomeChannels.get_or_none(guild_id=guild.id)
+    if home_channel is None:
+        return guild.system_channel
+    if home_channel.channel_id is None:
+        return None
+    return guild.get_channel(home_channel.channel_id)
+
+
+def can_manage_role(bot: Member, role: Role) -> bool:
     """Checks, can a bot change assign this role to anybody"""
     if not bot.guild_permissions.manage_roles:
         return False
