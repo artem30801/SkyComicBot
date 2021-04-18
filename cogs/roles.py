@@ -60,6 +60,7 @@ class RoleGroup(Model):
 
 role_number.set_model(Role)
 group_number.set_model(RoleGroup)
+
 fk_dict = {"group": RoleGroup, "role": Role}
 
 
@@ -79,34 +80,49 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         self.bot = bot
         self._sider_group = None
 
+        self.role_processor: db_utils.ModelProcessor = None
+        self.group_processor: db_utils.ModelProcessor = None
+
     async def on_startup(self):
+        self.role_processor = db_utils.ModelProcessor(Role)
+        self.group_processor = db_utils.ModelProcessor(RoleGroup)
+
+        self.role_add.options = self.role_processor.options
+        print(self.role_processor.options)
+        self.role_edit.options = self.role_processor.options_edit
+
+        self.group_add.options = self.group_processor.options
+        self.group_edit.options = self.group_processor.options_edit
+
         await self.update_options()
 
-    async def update_options(self):
-        self.group_add.options = await db_utils.generate_db_options(RoleGroup)
-        self.group_edit.options = await db_utils.generate_db_options(RoleGroup, edit="group")
+    async def update_options(self, updated_fields=None):
+        await self.role_processor.update_choices(self.role_add.options, updated_fields, False)
+        await self.role_processor.update_choices(self.role_edit.options, updated_fields, True)
 
-        self.role_add.options = await db_utils.generate_db_options(Role)
-        self.role_edit.options = await db_utils.generate_db_options(Role, edit="role")
+        await self.group_processor.update_choices(self.group_add.options, updated_fields, False)
+        await self.group_processor.update_choices(self.group_edit.options, updated_fields, True)
 
-        group_choices = [create_choice(name=group.name, value=group.id) for group in await RoleGroup.all()][:25]
-        group_commands = [self.group_info, self.group_delete, self.group_archive, self.role_snapshot_all]
-        for command in group_commands:
-            command.options[0]["choices"] = group_choices
-        self.role_snapshot_role.options[1]["choices"] = group_choices
+        # group_choices = [create_choice(name=group.name, value=group.id) for group in await RoleGroup.all()][:25]
+        # group_commands = [self.group_info, self.group_delete, self.group_archive, self.role_snapshot_all]
+        # for command in group_commands:
+        #     command.options[0]["choices"] = group_choices
+        # self.role_snapshot_role.options[1]["choices"] = group_choices
 
-        if self._sider_group is None:
-            self._sider_group = await RoleGroup.get_or_none(name="Sider")
-        if self._sider_group is not None:
-            sider_choices = [create_choice(name=role.name, value=role.id)
-                             for role in await Role.filter(group=self._sider_group)][:24]
-            sider_choices.insert(0, create_choice(name="Noside", value=-1))
-            self.side_join.options[0]["choices"] = sider_choices
+        # if updated_fields is None or "group" in updated_fields:
+
+        # if self._sider_group is None:
+        #     self._sider_group = await RoleGroup.get_or_none(name="Sider")
+        # if self._sider_group is not None:
+        #     sider_choices = [create_choice(name=role.name, value=role.id)
+        #                      for role in await Role.filter(group=self._sider_group)][:24]
+        #     sider_choices.insert(0, create_choice(name="Noside", value=-1))
+        #     self.side_join.options[0]["choices"] = sider_choices
 
         await self.bot.slash.sync_all_commands()
 
     async def update_guilds_roles(self):
-        db_roles = await Role.exclude(archived=True)
+        to_update = await Role.exclude(archived=True)
         to_remove = await Role.filter(archived=True).values_list("name", flat=True)
 
         for guild in self.bot.guilds:
@@ -116,26 +132,14 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
                 continue
 
             position = me.top_role.position
-            for db_role in db_roles:
+            for db_role in to_update:
                 role = discord.utils.get(guild.roles, name=db_role.name)
                 if role is not None and not utils.can_manage_role(me, role):
                     logger.warning(f"Can't manage role '{db_role.name}' at '{guild}'")
                     continue
 
                 position = max(position - 1, 1)
-                try:
-                    if role is not None:
-                        if not all((role.color == db_role.color,
-                                    role.mentionable == db_role.mentionable,
-                                    role.position == position,
-                                    )):
-                            await role.edit(colour=db_role.color, mentionable=db_role.mentionable, position=position)
-                    else:
-                        role = await guild.create_role(name=db_role.name, colour=db_role.color,
-                                                       mentionable=db_role.mentionable)
-                        await role.edit(position=position)
-                except (discord.errors.Forbidden, discord.errors.HTTPException):
-                    logger.warning(f"Failed to setup role '{db_role.name}' at '{guild}'")
+                await self._sider_group(guild, role, db_role, position)
 
             for name in to_remove:
                 role = discord.utils.get(guild.roles, name=name)
@@ -144,6 +148,21 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
                         await role.delete()
                     except (discord.errors.Forbidden, discord.errors.HTTPException):
                         logger.warning(f"Failed delete role {name} at {guild}")
+
+    async def _setup_role(self, guild, role, db_role, position):
+        try:
+            if role is not None:
+                if not all((role.color == db_role.color,
+                            role.mentionable == db_role.mentionable,
+                            role.position == position,
+                            )):
+                    await role.edit(colour=db_role.color, mentionable=db_role.mentionable, position=position)
+            else:
+                role = await guild.create_role(name=db_role.name, colour=db_role.color,
+                                               mentionable=db_role.mentionable)
+                await role.edit(position=position)
+        except (discord.errors.Forbidden, discord.errors.HTTPException):
+            logger.warning(f"Failed to setup role '{db_role.name}' at '{guild}'")
 
     async def rename_guilds_roles(self, old_name, name):
         if old_name == name:
@@ -162,8 +181,9 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         db_roles = await group.roles
         roles = (discord.utils.get(ctx.guild.roles, name=db_role.name) for db_role in db_roles if not db_role.archived)
         roles = [role for role in roles if role is not None]
-        await member.remove_roles(*roles)
-        logger.debug(f"Removed roles from group {group.name} from {ctx.guild}>{member}")
+        if roles:
+            await member.remove_roles(*roles)
+            logger.debug(f"Removed roles from group {group.name} from {ctx.guild}>{member}")
 
     @staticmethod
     def get_role_repr(ctx, role_name):
@@ -233,7 +253,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         role_mentions = [f"{self.get_role_repr(ctx, role.name)} {await db_utils.format_instance(role)}"
                          for role in db_roles]
 
-        for chunk in db_utils.chinks_split(role_mentions, 2000, 1):
+        for chunk in db_utils.chunks_split(role_mentions, 2000, 1):
             await ctx.send("\n".join(chunk),
                            allowed_mentions=discord.AllowedMentions.none(),
                            hidden=True)

@@ -48,87 +48,13 @@ async def reshuffle(model, number, exclude_instance=None):
         await instance.save()
 
 
-async def process(model, params, fk_dict=None, instance=None):
-    fk_dict = fk_dict or {}
-
-    if "name" in params:
-        db_schema = model.describe(False)["data_fields"]
-        field = next(filter(lambda x: x["name"] == "name", db_schema))
-        if field["unique"]:
-            name = params["name"]
-            if await model.exists(name=name):
-                raise commands.BadArgument(f"{model.__name__} **{name}** already exists!")
-
-    if "number" in params:
-        params["number"] = await get_max_number(model, params["number"])
-        await reshuffle(model, params["number"], instance)
-
-    fk_params = {k: v for k, v in fk_dict.items() if k in params}
-    for fk_param, fk_model in fk_params.items():
-        choices = await generate_db_choices(fk_model)
-        if choices is not None:
-            instance = await fk_model.get(id=params[fk_param])
-        else:
-            instance = await ModelConverter(fk_model).convert(None, params[fk_param])
-        params[fk_param] = instance
-
-    return params
-
-
-async def generate_db_choices(fk_model):
-    try:
-        use_choices = fk_model.Meta.__dict__["use_choices"]
-    except (AttributeError, KeyError):
-        use_choices = False
-    if use_choices:
-        choices = [create_choice(name=instance.name, value=instance.id)
-                   for instance in await fk_model.all()]
-        return choices
-    return None
-
-
-async def generate_db_options(model, edit=None):
-    db_schema = model.describe(False)
-    data_fields = db_schema["data_fields"]
-    fk_fields = db_schema["fk_fields"]
-    fk_names = [field["name"] for field in fk_fields]
-    options = []
-    for field in data_fields + fk_fields:
-        name = field["name"]
-        if name.endswith("_id"):
-            continue
-
-        is_fk = name in fk_names
-        python_type = int if is_fk else field["python_type"]
-        if python_type is discord.Colour:
-            python_type = str
-
-        required = field["default"] is None and not field["nullable"] and not edit
-        choices = await generate_db_choices(field["python_type"]) if is_fk else None
-
-        option = create_option(name=name,
-                               description=field["description"] or name,
-                               option_type=python_type,
-                               required=required,
-                               choices=choices)
-
-        options.append(option)
-
-    if edit is not None:
-        choices = await generate_db_choices(model)
-
-        option = create_option(name=edit,
-                               description=f"{model.__name__} to edit",
-                               option_type=int if choices else str,
-                               required=True,
-                               choices=choices)
-        options.insert(0, option)
-    options.sort(key=lambda x: x['required'], reverse=True)
-    return options
-
-
 def model_name(model):
     return model.__name__.lower()
+
+
+def instance_name(instance):
+    use_name = instance.processor.use_name
+    return instance.name if use_name else f"number {instance.number}"
 
 
 async def format_instance(instance, show_name=False):
@@ -140,9 +66,7 @@ async def format_instance(instance, show_name=False):
             continue
         if isinstance(value, queryset.QuerySet):
             fk_instance = await value
-            db_schema = fk_instance.describe(False)["data_fields"]
-            use_name = list((filter(lambda x: x["name"] == "name", db_schema)))
-            value = fk_instance.name if use_name else f"number {fk_instance.number}"
+            value = instance_name(fk_instance)
         if isinstance(value, fields.ReverseRelation):
             value = f"{len(await value)} {field_name}"
 
@@ -150,7 +74,7 @@ async def format_instance(instance, show_name=False):
     return format_dict(out_fields)
 
 
-def chinks_split(string_list, maxchars=2000, add_each=1):
+def chunks_split(string_list, maxchars=2000, add_each=1):
     count = 0
     temp_slice = []
     for item in string_list:
@@ -166,6 +90,194 @@ def chinks_split(string_list, maxchars=2000, add_each=1):
 
 def format_dict(d):
     return ", ".join([f"*{key}*={value}" for key, value in d.items()])
+
+
+async def generate_choices(self):
+    if not self.use_choices:
+        return None
+    return await ModelProcessor.generate_model_choices(self.model_type)
+
+
+def is_updated(updated_fields, field):
+    return updated_fields is None or field in updated_fields
+
+
+@dataclass
+class Field:
+    description: str
+    required: bool
+    unique: list
+    if_fk: bool
+    use_choices: bool
+    model_type: typing.Union[type, any]
+
+
+class ModelProcessor:
+    def __init__(self, model, fk_dict=None):
+        self.model = model
+        self.model.processor = self
+
+        self.fk_dict = fk_dict or {}
+
+        self.name = next((name for name, fk_model in self.fk_dict.items()
+                          if fk_model is model), None) or model_name(self.model)
+        self.fields = dict(self.process_fields(self.model))
+
+        self.use_name = "name" in self.fields.keys()
+        self.use_choices = self.is_uses_choices(self.model)
+        # self.choices_names = [name for field, name in self.fields if field.use_choices]
+
+        self._options = []
+        self.generate_options()
+
+        choices_ids = {option["name"]: i for i, option in enumerate(self._options[1:], start=1)}
+        self._choices_ids = {name: i for name, i in choices_ids.items() if self.fields[name].use_choices}
+        # self._choices =
+
+        if self.use_choices:
+            self._choices_ids[self.name] = 0
+            self.fields[self.name] = self
+
+    @property
+    def model_type(self):
+        return self.model
+
+    @property
+    def options(self):
+        return self._options[1:]
+
+    @property
+    def options_edit(self):
+        return [self._options[0]] + list(self._options_edit())
+
+    def _options_edit(self):
+        for option in self.options:
+            option = option.copy()
+            option["required"] = False
+            yield option
+
+    @classmethod
+    def process_fields(cls, model):
+        schema = model.describe(False)
+
+        for field in schema["data_fields"]:
+            if field["name"].endswith("_id"):  # skip id fields that duplicate fk fields
+                continue
+            yield cls.process_field(field, is_fk=False)
+
+        for field in schema["fk_fields"]:
+            yield cls.process_field(field, is_fk=True)
+
+    @classmethod
+    def process_field(cls, field, is_fk=False):
+        name = field["name"]
+        required = field["default"] is None and not field["nullable"]
+        python_type = field["python_type"]
+        unique = field["unique"]
+
+        use_choices = cls.is_uses_choices(python_type) if is_fk else False
+
+        processed_field = Field(description=field["description"] or name,
+                                required=required,
+                                if_fk=is_fk,
+                                use_choices=use_choices,
+                                model_type=python_type,
+                                unique=unique,
+                                )
+
+        return name, processed_field
+
+    @staticmethod
+    def is_uses_choices(model):
+        try:
+            use_choices = model.Meta.__dict__["use_choices"]
+        except (AttributeError, KeyError):
+            use_choices = False
+        return use_choices
+
+    @staticmethod
+    async def generate_model_choices(model):
+        return [create_choice(name=instance_name(instance), value=instance.id)
+                async for instance in model.all()]
+
+    def generate_options(self):
+        self._options = []
+        self_option = create_option(name=self.name,
+                                    description=f"{self.name} to edit",
+                                    option_type=int if self.use_choices else str,
+                                    required=True,
+                                    choices=None)
+        self._options.append(self_option)
+
+        for name, field in self.fields.items():
+            if field.if_fk:
+                option_type = int if field.use_choices else str
+            else:
+                option_type = field.model_type
+
+            if option_type is discord.Colour:
+                option_type = str
+
+            option = create_option(name=name,
+                                   description=field.description,
+                                   option_type=option_type,
+                                   required=field.required,
+                                   choices=None)
+
+            self._options.append(option)
+
+        self._options.sort(key=lambda x: x['required'], reverse=True)
+
+    async def update_choices(self, options, choices=None, edit=False):
+        if choices is None:
+            return await self._update_all_choices(options, edit)
+
+        for field_name in choices:
+            await self._update_choice(options, field_name, edit)
+
+    async def _update_all_choices(self, options, edit):
+        for name, i in self._choices_ids.items():
+            i = i - (not edit)
+            if i >= 0:  # to exclude self-choice on add func
+                options[i]["choices"] = await generate_choices(self.fields[name])
+
+    async def _update_choice(self, options, field_name, edit):
+        i = self._choices_ids[field_name] - (not edit)
+        field = self.fields[field_name]
+        options[i]["choices"] = await generate_choices(field)
+
+    def get_parent(self, fk_dict):
+        pass
+        # fi
+
+    async def process(self, params, instance=None):
+        # query = type(instance)
+        # query = self.model
+        # fk_fields = instance.descriptor.fk_names
+        # if fk_fields and fk_fields[0] in fk_dict:
+        #     parent_name = fk_fields[0]
+        #     query = query.filter(**{parent_name: await getattr(instance, parent_name)})
+        #
+        #     await reshuffle(query, number, instance)
+
+        if "name" in params and self.fields["name"].unique:  # todo unique together
+            name = params["name"]
+            if await self.model.exists(name=name):
+                raise commands.BadArgument(f"{self.name} **{name}** already exists!")
+
+        if "number" in params:
+            params["number"] = await get_max_number(self.model, params["number"])
+            await reshuffle(self.model, params["number"], instance)
+
+        fk_params = {k: v for k, v in self.fk_dict.items() if k in params}
+        for fk_param, fk_model in fk_params.items():
+            if self.fields.get(fk_param, self).use_choices:  # use self as it could be only field not in fields
+                instance = await fk_model.get(id=params[fk_param])
+            else:
+                instance = await ModelConverter(fk_model).convert(None, params[fk_param])
+            params[fk_param] = instance
+
+        return params
 
 
 class ModelConverter(commands.Converter):
