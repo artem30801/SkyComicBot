@@ -3,5 +3,5 @@ tortoise-orm[aiomysql]
 discord.py
 discord-py-slash-command
 python-dateutil
-fuzzywuzzy[speedup]
+fuzzywuzzy
 aiohttp
