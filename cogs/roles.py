@@ -116,7 +116,8 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
                 self._sider_group = await RoleGroup.get_or_none(name="Sider")
 
         if db_utils.is_updated(updated_fields, "role"):
-            crews = [await Role.get_or_none(name=role) for role in (utils.stream_crew_role, utils.update_crew_role)]
+            crews = [await Role.get_or_none(name=role) for role in
+                     (utils.stream_crew_role, utils.update_crew_role, utils.bot_crew_role)]
             crews = [create_choice(name=role.name, value=role.id) for role in crews if role is not None]
             self.crew_join.options[0]["choices"] = crews
             self.crew_leave.options[0]["choices"] = crews
