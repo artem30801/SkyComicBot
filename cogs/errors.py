@@ -50,6 +50,8 @@ class Errors(commands.Cog):
             mention = (await commands.RoleConverter().convert(ctx, utils.developer_role)).mention
         except RoleNotFound:
             mention = (await ctx.bot.fetch_user(246333265495982080)).mention
+        except:
+            return "Where am I? I've caught an error, ping developers"
         
         if random.random() < 0.005:
             return f":sparkles: Congrats! You've caught a shiny error message! :sparkles:\n{mention}, come and fix me!"
@@ -65,6 +67,18 @@ class Errors(commands.Cog):
             "{}, I've got an error!",
             "{}, something is broken!",
             "{}, h̵͚̍͝ȅ̵̢̠͠l̴̜̪̿ṕ̸̫",
+            "{}, pick me up, I'm scared!",
+            "{}, need your help >_<",
+            "{}, I broke my code!",
+            "{}, I felt a great disturbance in the Code...",
+            "{}, after questioning my life choices and reevaluating my state in the world I've come to the conclusion that I have a bug",
+            "{}, I found :bug:",
+            "{}, I found :lady_beetle:",
+            "{}, it was a beautiful day on the server and I've encountered a horrible bug",
+            "{}, something is wrong and I blame Gaster",
+            "{}, I can't work like this!",
+            "Good code makes sense. Bad code just works. {}'s doesn't do either.",
+            "{}, plz send help",
         ]
         return random.choice(message).format(mention)
 
