@@ -3,7 +3,6 @@ import itertools
 import logging
 import os
 import re
-import sys
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -45,13 +44,12 @@ class Emotes(utils.AutoLogCog, utils.StartupCog):
 
         self.bot = bot
         self.emotes = dict()
-        self.current_dir = os.path.abspath(os.path.dirname(sys.argv[0]))
 
     async def on_startup(self):
         await self.load_emotes()
 
     async def load_emotes(self):
-        files = multi_glob(*(abs_join(self.current_dir, "emotes", f"*{ext}") for ext in image_exts))
+        files = multi_glob(*(abs_join(self.bot.current_dir, "emotes", f"*{ext}") for ext in image_exts))
 
         self.emotes = {os.path.splitext(os.path.split(filename)[1])[0].replace("_", " ").strip().lower():
                            filename for filename in files}
@@ -145,7 +143,7 @@ class Emotes(utils.AutoLogCog, utils.StartupCog):
                 if response.status == 200:
                     attachment = await response.read()
 
-        with open(abs_join(self.current_dir, "emotes", filename), 'wb') as f:
+        with open(abs_join(self.bot.current_dir, "emotes", filename), 'wb') as f:
             f.write(attachment)
         logger.important(f"Saved emote '{name}' as '{filename}'")
 
