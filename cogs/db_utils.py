@@ -112,6 +112,12 @@ class Field:
     model_type: typing.Union[type, any]
 
 
+@dataclass
+class Options:
+    add: list
+    edit: list
+
+
 class ModelProcessor:
     def __init__(self, model, fk_dict=None):
         self.model = model
@@ -119,20 +125,19 @@ class ModelProcessor:
 
         self.fk_dict = fk_dict or {}
 
-        self.name = next((name for name, fk_model in self.fk_dict.items()
-                          if fk_model is model), None) or model_name(self.model)
+        self.name = next((name for name, fk_model in self.fk_dict.items() if fk_model is model), None) \
+                    or model_name(self.model)
         self.fields = dict(self.process_fields(self.model))
 
         self.use_name = "name" in self.fields.keys()
         self.use_choices = self.is_uses_choices(self.model)
-        # self.choices_names = [name for field, name in self.fields if field.use_choices]
 
-        self._options = []
-        self.generate_options()
+        self.options = self.get_options()
+        self._choices = {}
 
-        choices_ids = {option["name"]: i for i, option in enumerate(self._options[1:], start=1)}
+        choices_ids = {option["name"]: i for i, option in enumerate(self.options.add, start=1)}
         self._choices_ids = {name: i for name, i in choices_ids.items() if self.fields[name].use_choices}
-        # self._choices =
+        # self.choices_names = [name for field, name in self.fields if field.use_choices]
 
         if self.use_choices:
             self._choices_ids[self.name] = 0
@@ -143,18 +148,8 @@ class ModelProcessor:
         return self.model
 
     @property
-    def options(self):
-        return self._options[1:]
-
-    @property
-    def options_edit(self):
-        return [self._options[0]] + list(self._options_edit())
-
-    def _options_edit(self):
-        for option in self.options:
-            option = option.copy()
-            option["required"] = False
-            yield option
+    def choices(self):
+        return self._choices[self._choices_ids[self.name]]
 
     @classmethod
     def process_fields(cls, model):
@@ -198,16 +193,15 @@ class ModelProcessor:
     @staticmethod
     async def generate_model_choices(model):
         return [create_choice(name=instance_name(instance), value=instance.id)
-                async for instance in model.all()]
+                async for instance in model.all()][:25]
 
     def generate_options(self):
-        self._options = []
         self_option = create_option(name=self.name,
                                     description=f"{self.name} to edit",
                                     option_type=int if self.use_choices else str,
                                     required=True,
                                     choices=None)
-        self._options.append(self_option)
+        yield self_option
 
         for name, field in self.fields.items():
             if field.if_fk:
@@ -223,34 +217,56 @@ class ModelProcessor:
                                    option_type=option_type,
                                    required=field.required,
                                    choices=None)
+            yield option
 
-            self._options.append(option)
+    def get_options(self):
+        raw_options = sorted(list(self.generate_options()), key=lambda x: x['required'], reverse=True)
+        add_options = raw_options[1:]
+        edit_options = [raw_options[0]] + list(self._options_edit(add_options))
 
-        self._options.sort(key=lambda x: x['required'], reverse=True)
+        return Options(add_options, edit_options)
 
-    async def update_choices(self, options, choices=None, edit=False):
-        if choices is None:
-            return await self._update_all_choices(options, edit)
+    @staticmethod
+    def _options_edit(options):
+        for option in options:
+            option = option.copy()
+            option["required"] = False
+            yield option
 
-        for field_name in choices:
-            await self._update_choice(options, field_name, edit)
+    def _filter_choices(self, choices=None):
+        if not choices:
+            return self._choices_ids.items()
+        else:
+            return ((name, i) for name, i in self._choices_ids.items() if name in choices)
 
-    async def _update_all_choices(self, options, edit):
-        for name, i in self._choices_ids.items():
-            i = i - (not edit)
-            if i >= 0:  # to exclude self-choice on add func
-                options[i]["choices"] = await generate_choices(self.fields[name])
+    async def update_choices(self, choices=None):
+        updated = list(self._filter_choices(choices))
+        for name, i in updated:
+            self._choices[i] = await generate_choices(self.fields[name])
+        return updated
 
-    async def _update_choice(self, options, field_name, edit):
-        i = self._choices_ids[field_name] - (not edit)
-        field = self.fields[field_name]
-        options[i]["choices"] = await generate_choices(field)
+    def set_choices(self, option, updated, edit=False):
+        for name, i in updated:
+            option_i = i - (not edit)
+            if option_i >= 0:  # to exclude self-choice on add func
+                option[option_i]["choices"] = self._choices[i]
 
     def get_parent(self, fk_dict):
         pass
-        # fi
 
-    async def process(self, params, instance=None):
+    async def __call__(self, params):
+        return await self.process(params)
+
+    async def process(self, params):
+        fk_params = {k: v for k, v in self.fk_dict.items() if k in params}  # todo replace fk dict with fields?
+        for fk_param, fk_model in fk_params.items():
+            if self.fields.get(fk_param, self).use_choices:  # use self as it could be only field not in fields
+                instance = await fk_model.get(id=params[fk_param])
+            else:
+                instance = await ModelConverter(fk_model).convert(None, params[fk_param])
+            params[fk_param] = instance
+
+        instance = params.get(self.name, None)
         # query = type(instance)
         # query = self.model
         # fk_fields = instance.descriptor.fk_names
@@ -268,14 +284,6 @@ class ModelProcessor:
         if "number" in params:
             params["number"] = await get_max_number(self.model, params["number"])
             await reshuffle(self.model, params["number"], instance)
-
-        fk_params = {k: v for k, v in self.fk_dict.items() if k in params}
-        for fk_param, fk_model in fk_params.items():
-            if self.fields.get(fk_param, self).use_choices:  # use self as it could be only field not in fields
-                instance = await fk_model.get(id=params[fk_param])
-            else:
-                instance = await ModelConverter(fk_model).convert(None, params[fk_param])
-            params[fk_param] = instance
 
         return params
 

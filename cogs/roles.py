@@ -84,40 +84,42 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         self.group_processor: db_utils.ModelProcessor = None
 
     async def on_startup(self):
-        self.role_processor = db_utils.ModelProcessor(Role)
-        self.group_processor = db_utils.ModelProcessor(RoleGroup)
+        self.role_processor = db_utils.ModelProcessor(Role, fk_dict)
+        self.group_processor = db_utils.ModelProcessor(RoleGroup, fk_dict)
 
-        self.role_add.options = self.role_processor.options
-        print(self.role_processor.options)
-        self.role_edit.options = self.role_processor.options_edit
+        self.role_add.options = self.role_processor.options.add
+        self.role_edit.options = self.role_processor.options.edit
 
-        self.group_add.options = self.group_processor.options
-        self.group_edit.options = self.group_processor.options_edit
+        self.group_add.options = self.group_processor.options.add
+        self.group_edit.options = self.group_processor.options.edit
 
         await self.update_options()
 
     async def update_options(self, updated_fields=None):
-        await self.role_processor.update_choices(self.role_add.options, updated_fields, False)
-        await self.role_processor.update_choices(self.role_edit.options, updated_fields, True)
+        logger.info(f"Updating command fields: {updated_fields}")
+        role_updated = await self.role_processor.update_choices(updated_fields)
+        self.role_processor.set_choices(self.role_add.options, role_updated, False)
+        self.role_processor.set_choices(self.role_edit.options, role_updated, True)
 
-        await self.group_processor.update_choices(self.group_add.options, updated_fields, False)
-        await self.group_processor.update_choices(self.group_edit.options, updated_fields, True)
+        group_updated = await self.group_processor.update_choices(updated_fields)
+        self.group_processor.set_choices(self.group_add.options, group_updated, False)
+        self.group_processor.set_choices(self.group_edit.options, group_updated, True)
 
-        # group_choices = [create_choice(name=group.name, value=group.id) for group in await RoleGroup.all()][:25]
-        # group_commands = [self.group_info, self.group_delete, self.group_archive, self.role_snapshot_all]
-        # for command in group_commands:
-        #     command.options[0]["choices"] = group_choices
-        # self.role_snapshot_role.options[1]["choices"] = group_choices
+        if db_utils.is_updated(updated_fields, "group"):
+            group_choices = self.group_processor.choices
+            group_commands = [self.group_info, self.group_delete, self.group_archive, self.role_snapshot_all]
+            for command in group_commands:
+                command.options[0]["choices"] = group_choices
+            self.role_snapshot_role.options[1]["choices"] = group_choices
 
-        # if updated_fields is None or "group" in updated_fields:
+            if self._sider_group is None:
+                self._sider_group = await RoleGroup.get_or_none(name="Sider")
 
-        # if self._sider_group is None:
-        #     self._sider_group = await RoleGroup.get_or_none(name="Sider")
-        # if self._sider_group is not None:
-        #     sider_choices = [create_choice(name=role.name, value=role.id)
-        #                      for role in await Role.filter(group=self._sider_group)][:24]
-        #     sider_choices.insert(0, create_choice(name="Noside", value=-1))
-        #     self.side_join.options[0]["choices"] = sider_choices
+        if self._sider_group is not None and db_utils.is_updated(updated_fields, "role"):
+            sider_choices = [create_choice(name=role.name, value=role.id)
+                             for role in await Role.filter(group=self._sider_group)][:24]
+            sider_choices.insert(0, create_choice(name="Noside", value=-1))
+            self.side_join.options[0]["choices"] = sider_choices
 
         await self.bot.slash.sync_all_commands()
 
@@ -139,7 +141,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
                     continue
 
                 position = max(position - 1, 1)
-                await self._sider_group(guild, role, db_role, position)
+                await self._setup_role(guild, role, db_role, position)
 
             for name in to_remove:
                 role = discord.utils.get(guild.roles, name=name)
@@ -199,6 +201,10 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
             return RoleGroupStates.archived
         return RoleGroupStates.normal
 
+    @staticmethod
+    def member_mention(ctx, member):
+        return member.mention if member != ctx.author else "You"
+
     @cog_ext.cog_subcommand(base="role", name="check",
                             options=[
                                 create_option(
@@ -212,7 +218,6 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
     async def role_check(self, ctx: SlashContext, member: discord.Member = None):
         """Shows your (or specified users) roles"""
         member = member or ctx.author
-        mention = member.mention if member != ctx.author else "You"
 
         logger.debug(f"{self.format_caller(ctx)} checked {member} roles")
 
@@ -222,7 +227,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
             mentions = [role.mention for role in member.roles[1:]]
             role_text = f"have following roles:  {', '.join(mentions)}"
 
-        await ctx.send(f"{mention} {role_text}. To view available roles, use /role list",
+        await ctx.send(f"{self.member_mention(ctx, member)} {role_text}. To view available roles, use /role list",
                        allowed_mentions=discord.AllowedMentions.none(),
                        hidden=True)
 
@@ -240,9 +245,12 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
             db_roles = await query.values_list("name", flat=True)
             role_mentions = [self.get_role_repr(ctx, role) for role in db_roles]
             embed.add_field(name=group.name, value="\n".join(role_mentions), inline=True)
+
         if not embed.fields:
             embed.description = "Woe is me, there are no roles!"
 
+        embed.set_footer(text="Use `/role assign <role>` to get those roles!",
+                         icon_url=ctx.guild.me.avatar_url)
         await ctx.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
 
     @cog_ext.cog_subcommand(base="role", name="database", guild_ids=guild_ids)
@@ -309,13 +317,13 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         """Adds new role group to internal DB"""
         logger.db(f"{self.format_caller(ctx)} trying to add group with args '{args}' and params '{params}'")
 
-        params = await db_utils.process(RoleGroup, params, fk_dict)
+        params = await self.group_processor.process(params)
         instance = await RoleGroup.create(**params)
         logger.db(f"Added role group '{instance.name}' with  params '{params}'")
 
         await ctx.send(f"Successfully added role group **{instance.name}**; {await db_utils.format_instance(instance)}",
                        hidden=True)
-        await self.update_options()
+        await self.update_options("group")
 
     @cog_ext.cog_subcommand(base="role", subcommand_group="group", name="delete",
                             options=[
@@ -343,7 +351,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         await group.delete()
         logger.db(f"Deleted role group {name}")
         await ctx.send(f"Successfully deleted role group **{name}**", hidden=True)
-        await self.update_options()
+        await self.update_options("group")
 
     @cog_ext.cog_subcommand(base="role", subcommand_group="group", name="edit", guild_ids=guild_ids)
     @has_bot_perms()
@@ -352,7 +360,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         """Edits specified role group"""
         logger.db(f"{self.format_caller(ctx)} trying to edit group with args '{args}' and params '{params}")
 
-        params = await db_utils.process(RoleGroup, params, fk_dict)
+        params = await self.group_processor.process(params)
         group = params.pop("group")
 
         old_name = group.name
@@ -365,7 +373,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         await ctx.send(f"Updated role group **{old_name}** with new parameters: "
                        f"{utils.format_params(params)}",
                        hidden=True)
-        await self.update_options()
+        await self.update_options("group")
 
     @cog_ext.cog_subcommand(base="role", subcommand_group="group", name="archive",
                             options=[
@@ -429,7 +437,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         logger.info(f"{self.format_caller(ctx)} trying to assign '{role}' to {member}")
 
         if role in member.roles:
-            await ctx.send(f"Looks like you already have {role.mention} role ;)",
+            await ctx.send(f"Looks like {self.member_mention(ctx, member)} already have {role.mention} role ;)",
                            allowed_mentions=discord.AllowedMentions.none(),
                            hidden=True)
             return
@@ -447,16 +455,16 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
             logger.info(f"{self.format_caller(ctx)} don't have permissions to assign '{role}' to {member}")
             raise commands.MissingPermissions([utils.bot_manager_role])
 
-        group = await db_role.group
-        if group.exclusive:
-            logger.info(f"Removing roles, conflicting with {role}")
-            await self.remove_conflicting_roles(ctx, member, group)
-
         if not utils.can_manage_role(ctx.guild.me, role):
             await ctx.send(f"Sorry, I cannot manage role {role.mention}",
                            allowed_mentions=discord.AllowedMentions.none(),
                            hidden=True)
             return
+
+        group = await db_role.group
+        if group.exclusive:
+            logger.info(f"Removing roles, conflicting with {role} (if any)")
+            await self.remove_conflicting_roles(ctx, member, group)
 
         await member.add_roles(role)
         logger.info(f"Assigned role '{role}' to {member}")
@@ -487,7 +495,8 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         logger.info(f"{self.format_caller(ctx)} trying to remove role '{role}' from {member}")
 
         if role not in member.roles:
-            await ctx.send(f"Looks like don't have {role.mention} role anyways ;)",
+            await ctx.send(f"Looks like {self.member_mention(ctx, member).lower()} "
+                           f"don't have {role.mention} role anyways ;)",
                            allowed_mentions=discord.AllowedMentions.none(),
                            hidden=True)
             return
@@ -541,6 +550,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         await self.snapshot_role(ctx, role, group)
         await ctx.send(f"Added '{role}' role to the internal database", hidden=True)
         await self.update_guilds_roles()
+        await self.update_options("role")
 
     @cog_ext.cog_subcommand(base="role", subcommand_group="snapshot", name="all",
                             options=[
@@ -572,8 +582,9 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
             else:
                 new_roles.append(role)
 
-        await ctx.send(f"Added roles: {', '.join([role.mention for role in new_roles])}", hidden=True)
         await self.update_guilds_roles()
+        await ctx.send(f"Added roles: {', '.join([role.mention for role in new_roles])}", hidden=True)
+        await self.update_options("role")
 
     @cog_ext.cog_subcommand(base="role", name="add", guild_ids=guild_ids)
     @has_bot_perms()
@@ -582,7 +593,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         logger.db(f"{self.format_caller(ctx)} trying to add role with args '{args}' and params '{params}'")
 
         await ctx.defer(hidden=True)
-        params = await db_utils.process(Role, params, fk_dict)
+        params = await self.role_processor.process(params)
         instance = await Role.create(**params)
         await self.update_guilds_roles()
 
@@ -592,7 +603,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
                        allowed_mentions=discord.AllowedMentions.none(),
                        hidden=True)
 
-        await self.update_options()
+        await self.update_options("role")
 
     @cog_ext.cog_subcommand(base="role", name="delete",
                             options=[
@@ -608,8 +619,8 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
     async def role_delete(self, ctx: SlashContext, role):
         """Completely removes role from internal DB"""
         logger.db(f"{self.format_caller(ctx)} trying to delete role '{role}'")
-        
-        role = (await db_utils.process(Role, {"role": role}, fk_dict))["role"]
+
+        role = (await self.role_processor.process({"role": role}))["role"]
         if not role.archived:
             logger.warning(f"Can't delete role '{role.name}', it is not archived!")
             raise commands.BadArgument("Role must be archived to be deleted from internal DB")
@@ -617,7 +628,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         await role.delete()
         logger.db(f"Deleted role '{role.name}'")
         await ctx.send(f"Successfully deleted **{role.name}** from internal DB", hidden=True)
-        await self.update_options()
+        await self.update_options("role")
 
     @cog_ext.cog_subcommand(base="role", name="sync", guild_ids=guild_ids)
     @has_bot_perms()
@@ -636,7 +647,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         logger.db(f"{self.format_caller(ctx)} trying to edit role with args '{args}' and params '{params}'")
         
         await ctx.defer(hidden=True)
-        params = await db_utils.process(Role, params, fk_dict)
+        params = await self.role_processor.process(params)
         role = params.pop("role")
 
         if "archived" in params and role.name == utils.bot_manager_role and params["archived"]:
@@ -657,7 +668,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
                        f"{utils.format_params(params)}",
                        allowed_mentions=discord.AllowedMentions.none(),
                        hidden=True)
-        await self.update_options()
+        await self.update_options("role")
 
     @cog_ext.cog_subcommand(base="side", name="join",
                             options=[
