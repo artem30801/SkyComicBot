@@ -14,11 +14,10 @@ from discord.ext import commands
 from discord.ext import tasks
 from discord_slash import cog_ext, SlashContext
 from discord_slash.utils.manage_commands import create_option
-from tortoise import fields
-from tortoise.models import Model
 
 import cogs.cog_utils as utils
 from cogs.cog_utils import guild_ids
+from cogs.models import HomeChannels
 from cogs.permissions import has_server_perms, has_bot_perms
 
 logger = logging.getLogger(__name__)
@@ -34,23 +33,19 @@ def display_delta(delta):
     return ", ".join([f"{value} {key + 's' if value > 1 else key}" for key, value in d.items() if value > 0])
 
 
-class HomeChannels(Model):
-    guild_id = fields.BigIntField()
-    channel_id = fields.BigIntField(null=True)
-
-
 class Greetings(utils.AutoLogCog, utils.StartupCog):
     """Simple greetings and welcome commands"""
 
-    startup_file_name = "last_startup"
-    startup_time_format = "%H:%M %d.%m.%Y"
+    activity_time_format = "%H:%M %d.%m.%Y"
 
     def __init__(self, bot):
         utils.StartupCog.__init__(self)
         utils.AutoLogCog.__init__(self, logger)
         self.bot = bot
+        self.activity_file_path = utils.abs_join(bot.current_dir, "last_activity")
         self._last_greeted_member = None
         self._started_at = None
+        self._last_active_at = None
 
     async def on_startup(self):
         logger.info(f"Logged in as {self.bot.user}")
@@ -58,46 +53,47 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
         guilds_list = [f"[{g.name}: {g.member_count} members]" for g in self.bot.guilds]
         logger.info(f"Current servers: {', '.join(guilds_list)}")
 
-        prev_start = self.get_last_startup_time()
-        self.update_startup_time_loop.start()
+        last_activity = self.get_last_activity_time()
+        self._started_at = datetime.utcnow()
+        self.update_activity_time_loop.start()
 
         # check home channels
         for guild in self.bot.guilds:
-            channel = await self.get_home_channel(guild)
+            channel = await utils.get_home_channel(guild)
 
             if not utils.can_bot_respond(self.bot, channel) and channel is not None:
                 logger.warning(f"Bot can't send messages to home channel #{channel.name} at '{guild.name}'")
                 continue
 
-        # Don't send greetings if last startup was less than a 3 hours ago
-        if prev_start is None or (self._started_at - prev_start > timedelta(hours=3)):
+        # Don't send greetings if last activity was less than a 3 hours ago
+        if last_activity is None or (self._last_active_at - last_activity > timedelta(hours=3)):
             await self.send_home_channels_message("Hello hello! I'm back online and ready to work!")
 
     @tasks.loop(hours=1)
-    async def update_startup_time_loop(self):
-        self._started_at = datetime.now()
-        self.update_last_startup_time()
-        logger.info("Updated startup time file")
+    async def update_activity_time_loop(self):
+        self._last_active_at = datetime.utcnow()
+        self.update_last_activity_time()
 
-    @commands.Cog.listener()
-    async def on_member_join(self, member):
-        channel = await self.get_home_channel(member.guild)
-        if utils.can_bot_respond(self.bot, channel):
-            await channel.send(f"{self.get_greeting(member)}\nWelcome!")
-            logger.info(f"Greeted new guild member {member}")
+    # @commands.Cog.listener()
+    # async def on_member_join(self, member):
+    #     channel = await self.get_home_channel(member.guild)
+    #     if utils.can_bot_respond(self.bot, channel):
+    #         await channel.send(f"{self.get_greeting(member)}\nWelcome!")
+    #         logger.info(f"Greeted new guild member {member}")
 
-    @classmethod
-    def get_last_startup_time(cls) -> Optional[datetime]:
+    def get_last_activity_time(self) -> Optional[datetime]:
         try:
-            with open(cls.startup_file_name, 'r') as startup_time_file:
-                return datetime.strptime(startup_time_file.read(), cls.startup_time_format)
+            with open(self.activity_file_path, 'r') as startup_time_file:
+                return datetime.strptime(startup_time_file.read(), self.activity_time_format)
         except (ValueError, OSError):
             return None
 
-    def update_last_startup_time(self):
+    def update_last_activity_time(self):
         """writes to the startup file current _started_at file"""
-        with open(self.startup_file_name, 'w') as startup_time_file:
-            startup_time_file.write(self._started_at.strftime(self.startup_time_format))
+        last_activity = self._last_active_at.strftime(self.activity_time_format)
+        with open(self.activity_file_path, 'w') as activity_time_file:
+            activity_time_file.write(last_activity)
+            logger.info(f"Updated last activity time file: {last_activity}")
 
     @cog_ext.cog_subcommand(base="home", name="notify",
                             options=[
@@ -136,7 +132,7 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
     @cog_ext.cog_subcommand(base="home", name="where", guild_ids=guild_ids)
     async def home_channel_where(self, ctx: SlashContext):
         """Shows where current home of the bot in this server is."""
-        current_home = await self.get_home_channel(ctx.guild)
+        current_home = await utils.get_home_channel(ctx.guild)
         if current_home is None:
             await ctx.send("I'm homeless T_T", hidden=True)
         else:
@@ -166,7 +162,7 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
             await ctx.send("Hey! That's not a text channel!", hidden=True)
             return
 
-        current_home = await self.get_home_channel(ctx.guild)
+        current_home = await utils.get_home_channel(ctx.guild)
 
         if current_home == new_home:
             logger.db(f"'{new_home}' is already a home channel")
@@ -179,7 +175,7 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
 
         cmd_response = f"Moving to the {new_home.mention}."
         if not utils.can_bot_respond(ctx.bot, new_home):
-            logger.db(f"Bot is muted at the new home channel")
+            logger.db("Bot is muted at the new home channel")
             cmd_response += ".. You know I'm muted there, right? -_-"
 
         await ctx.send(cmd_response, hidden=True)
@@ -196,7 +192,7 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
         """Resets home channel for the bot"""
         logger.db(f"{self.format_caller(ctx)} trying to reset home channel at guild '{ctx.guild}'")
 
-        old_home = await self.get_home_channel(ctx.guild)
+        old_home = await utils.get_home_channel(ctx.guild)
 
         if old_home is None:
             logger.db(f"Bot already has no home channel at '{ctx.guild}'")
@@ -217,18 +213,9 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
         channel_id = channel.id if channel is not None else None
         await HomeChannels.update_or_create(guild_id=guild.id, defaults={"channel_id": channel_id})
 
-    @staticmethod
-    async def get_home_channel(guild: discord.Guild) -> discord.TextChannel:
-        home_channel = await HomeChannels.get_or_none(guild_id=guild.id)
-        if home_channel is None:
-            return guild.system_channel
-        if home_channel.channel_id is None:
-            return None
-        return guild.get_channel(home_channel.channel_id)
-
     async def send_home_channels_message(self, message: str, attachment=None, attachment_name=""):
         for guild in self.bot.guilds:
-            channel = await self.get_home_channel(guild)
+            channel = await utils.get_home_channel(guild)
             if utils.can_bot_respond(self.bot, channel):
                 file = discord.File(io.BytesIO(attachment), attachment_name) if attachment is not None else None
                 await channel.send(message, file=file)
@@ -248,13 +235,13 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
              "Oh! Hello there, you must be {}.",
              "G'day, {}!",
              "Howdy, {}",
-             "Origato, {}-san",
+             "Arigato, {}-san",
              "Hoi, {}",
              ]
         message = random.choice(greetings).format(member.display_name)
 
         if self._last_greeted_member is not None and self._last_greeted_member.id == member.id:
-            message = f"{message} This feels oddly familiar..."
+            message = f"{message}\nThis feels oddly familiar..."
 
         self._last_greeted_member = member
         return message
@@ -276,9 +263,9 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
     @cog_ext.cog_slash(guild_ids=guild_ids)
     async def uptime(self, ctx: SlashContext):
         """Shows how long the bot was running for."""
-        now = datetime.now()
+        now = datetime.utcnow()
         delta = relativedelta.relativedelta(now, self._started_at)
-        await ctx.send(f"I was up and running since {self._started_at.strftime('%d/%m/%Y, %H:%M:%S')} "
+        await ctx.send(f"I was up and running since {self._started_at.strftime('%d/%m/%Y, %H:%M:%S')} (GMT) "
                        f"for {display_delta(delta)}")
 
     @cog_ext.cog_slash(guild_ids=guild_ids)

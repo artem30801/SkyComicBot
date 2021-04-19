@@ -7,7 +7,7 @@ reactions/
 comic_storage/
 
 settings.py
-last_startup
+last_activity
 
 *.ini
 *.log
@@ -16,6 +16,9 @@ last_startup
 # IDE files
 .vscode/
 *.code-workspace
+
+#pylint files
+pylintrc
 
 # Temp files
 __pycache__/
