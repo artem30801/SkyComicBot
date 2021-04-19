@@ -128,6 +128,7 @@ class ModelProcessor:
         self.name = next((name for name, fk_model in self.fk_dict.items() if fk_model is model), None) \
                     or model_name(self.model)
         self.fields = dict(self.process_fields(self.model))
+        # self.fk_fields = {name: field for name, field in self.fields if field.if_fk}
 
         self.use_name = "name" in self.fields.keys()
         self.use_choices = self.is_uses_choices(self.model)
@@ -141,11 +142,15 @@ class ModelProcessor:
 
         if self.use_choices:
             self._choices_ids[self.name] = 0
-            self.fields[self.name] = self
+        self.fields[self.name] = self
 
     @property
     def model_type(self):
         return self.model
+
+    @property
+    def if_fk(self):
+        return True
 
     @property
     def choices(self):
@@ -166,6 +171,9 @@ class ModelProcessor:
     @classmethod
     def process_field(cls, field, is_fk=False):
         name = field["name"]
+        if is_fk:
+            name += "_name"
+
         required = field["default"] is None and not field["nullable"]
         python_type = field["python_type"]
         unique = field["unique"]
@@ -243,7 +251,9 @@ class ModelProcessor:
         updated = list(self._filter_choices(choices))
         for name, i in updated:
             self._choices[i] = await generate_choices(self.fields[name])
-        return updated
+
+        self.set_choices(self.options.add, updated, False)
+        self.set_choices(self.options.edit, updated, True)
 
     def set_choices(self, option, updated, edit=False):
         for name, i in updated:
@@ -258,12 +268,17 @@ class ModelProcessor:
         return await self.process(params)
 
     async def process(self, params):
-        fk_params = {k: v for k, v in self.fk_dict.items() if k in params}  # todo replace fk dict with fields?
-        for fk_param, fk_model in fk_params.items():
+        fk_params = {name: field for name, field in self.fields.items()
+                     if field.if_fk and name in params}
+
+        for fk_param, field in fk_params.items():
+            fk_model = field.model_type
+            value = params.pop(fk_param)
             if self.fields.get(fk_param, self).use_choices:  # use self as it could be only field not in fields
-                instance = await fk_model.get(id=params[fk_param])
+                instance = await fk_model.get(id=value)
             else:
-                instance = await ModelConverter(fk_model).convert(None, params[fk_param])
+                instance = await ModelConverter(fk_model).convert(None, value)
+            fk_param = fk_param.removesuffix("_name")
             params[fk_param] = instance
 
         instance = params.get(self.name, None)

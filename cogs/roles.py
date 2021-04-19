@@ -73,6 +73,7 @@ class RoleGroupStates:
 class Roles(utils.AutoLogCog, utils.StartupCog):
     """Roles management commands"""
 
+    # noinspection PyTypeChecker
     def __init__(self, bot):
         utils.AutoLogCog.__init__(self, logger)
         utils.StartupCog.__init__(self)
@@ -94,21 +95,19 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         self.group_add.options = self.group_processor.options.add
         self.group_edit.options = self.group_processor.options.edit
 
+        self.group_edit_roles.options = self.group_processor.options.edit[:1] + self.role_processor.options.edit[2:]
+
         await self.update_options()
 
+    # noinspection PyTypeChecker
     async def update_options(self, updated_fields=None):
         logger.info(f"Updating command fields: {updated_fields}")
-        role_updated = await self.role_processor.update_choices(updated_fields)
-        self.role_processor.set_choices(self.role_add.options, role_updated, False)
-        self.role_processor.set_choices(self.role_edit.options, role_updated, True)
-
-        group_updated = await self.group_processor.update_choices(updated_fields)
-        self.group_processor.set_choices(self.group_add.options, group_updated, False)
-        self.group_processor.set_choices(self.group_edit.options, group_updated, True)
+        await self.role_processor.update_choices(updated_fields)
+        await self.group_processor.update_choices(updated_fields)
 
         if db_utils.is_updated(updated_fields, "group"):
             group_choices = self.group_processor.choices
-            group_commands = [self.group_info, self.group_delete, self.group_archive, self.role_snapshot_all]
+            group_commands = [self.group_info, self.group_delete, self.role_snapshot_all]
             for command in group_commands:
                 command.options[0]["choices"] = group_choices
             self.role_snapshot_role.options[1]["choices"] = group_choices
@@ -159,7 +158,8 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
                     except (discord.errors.Forbidden, discord.errors.HTTPException):
                         logger.warning(f"Failed delete role {name} at {guild}")
 
-    async def _setup_role(self, guild, role, db_role, position):
+    @staticmethod
+    async def _setup_role(guild, role, db_role, position):
         try:
             if role is not None:
                 if not all((role.color == db_role.color,
@@ -384,24 +384,6 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
                        hidden=True)
         await self.update_options("group")
 
-    @cog_ext.cog_subcommand(base="role", subcommand_group="group", name="archive",
-                            options=[
-                                create_option(
-                                    name="group",
-                                    description="Group to archive/unarchive",
-                                    option_type=int,
-                                    required=True,
-                                ),
-                                create_option(
-                                    name="action",
-                                    description="Whether to archive/unarchive role group",
-                                    option_type=int,
-                                    required=False,
-                                    choices=[create_choice(name="archive", value=int(True)),
-                                             create_choice(name="unarchive", value=int(False))]
-                                )
-                            ],
-                            guild_ids=guild_ids)
     @has_bot_perms()
     async def group_archive(self, ctx: SlashContext, group, archive: bool = True):
         """Archives or unarchives all roles in specified group"""
@@ -421,6 +403,35 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         action = "Archived" if archive else "Unarchived"
         logger.db(f"Successfully {action.lower()} role group {group.name}")
         await ctx.send(f"{action} role group **{group.name}** and all roles in that group", hidden=True)
+
+    @cog_ext.cog_subcommand(base="role", subcommand_group="group", name="edit_roles", guild_ids=guild_ids)
+    @has_bot_perms()
+    @atomic()
+    async def group_edit_roles(self, ctx: SlashContext, *args, **params):
+        """Edits all roles in given group with specified parameters"""
+        logger.db(f"{self.format_caller(ctx)} trying to edit all roles in group "
+                  f"with args '{args}' and params '{params}")
+
+        await ctx.defer(True)
+        group = params.pop("group")
+        group = (await self.group_processor.process({"group": group}))["group"]
+
+        base_number = params.pop("number", None)
+        if base_number is not None:
+            base_number = await db_utils.get_max_number(Role, base_number)
+            print(base_number)
+
+        roles = await Role.filter(group=group)
+        for number, role in enumerate(roles):
+            role_params = params.copy()
+            role_params["role"] = role.name
+            if base_number is not None:
+                role_params["number"] = base_number + number
+            await self._role_edit(role_params)
+
+        await self.update_guilds_roles()
+        await ctx.send(f"Edited role group **{group.name}** and all {len(roles)} roles in that group", hidden=True)
+        await self.update_options("role")
 
     @cog_ext.cog_subcommand(base="role", name="assign",
                             options=[
@@ -523,7 +534,9 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
             raise commands.MissingPermissions([utils.bot_manager_role])
 
         if not utils.can_manage_role(ctx.guild.me, role):
-            await ctx.send(f"Sorry, I cannot manage role '{role}'", hidden=True)
+            await ctx.send(f"Sorry, I cannot manage role {role.mention}",
+                           allowed_mentions=discord.AllowedMentions.none(),
+                           hidden=True)
             return
 
         await member.remove_roles(role)
@@ -551,7 +564,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
                             guild_ids=guild_ids)
     @has_bot_perms()
     async def role_snapshot_role(self, ctx: SlashContext, role: discord.Role, group: Optional[int] = None):
-        """Adds existing server role to the internal database (if bot cannot manage this role)"""
+        """Adds existing server role to the internal database (if bot can manage this role)"""
         logger.db(f"{self.format_caller(ctx)} trying to snapshot role '{role}' from '{ctx.guild}'")
         # await ctx.defer(hidden=True)
         if group:
@@ -648,6 +661,25 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         await self.update_options()
         await ctx.send("Updated all guilds roles in accordance with internal DB", hidden=True)
 
+    async def _role_edit(self, params):
+        params = await self.role_processor.process(params)
+        role = params.pop("role")
+
+        if ("archived" in params or "name" in params) and role.name == utils.bot_manager_role and params["archived"]:
+            logger.warning("Trying to edit bot manager role")
+            raise commands.MissingPermissions(["I won't edit Bot manager role this way, lol. Nope."])
+
+        old_name = role.name
+        role = role.update_from_dict(params)
+        await role.save()
+
+        logger.db(f"Edited role '{old_name}' with params '{params}'")
+
+        if "name" in params:
+            await self.rename_guilds_roles(old_name, role.name)
+
+        return role
+
     @cog_ext.cog_subcommand(base="role", name="edit", guild_ids=guild_ids)
     @has_bot_perms()
     @atomic()
@@ -656,23 +688,10 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         logger.db(f"{self.format_caller(ctx)} trying to edit role with args '{args}' and params '{params}'")
 
         await ctx.defer(hidden=True)
-        params = await self.role_processor.process(params)
-        role = params.pop("role")
 
-        if "archived" in params and role.name == utils.bot_manager_role and params["archived"]:
-            logger.warning("Trying to archive bot manager role")
-            raise commands.MissingPermissions(["I won't archive Bot manager role, lol. Nope."])
+        role = await self._role_edit(params)
 
-        old_name = role.name
-        role = role.update_from_dict(params)
-        await role.save()
-
-        if "name" in params:
-            await self.rename_guilds_roles(old_name, role.name)
         await self.update_guilds_roles()
-
-        logger.db(f"Edited role '{old_name}' with params '{params}'")
-
         await ctx.send(f"Updated role {self.get_role_repr(ctx, role.name)} with new parameters: "
                        f"{utils.format_params(params)}",
                        allowed_mentions=discord.AllowedMentions.none(),
@@ -758,7 +777,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
                                 ),
                             ],
                             guild_ids=guild_ids)
-    async def crew_join(self, ctx: SlashContext, crew, join=True):
+    async def crew_join(self, ctx: SlashContext, crew, join=True):  # todo all
         """Receive crew roles to get pings when LynxGriffin is streaming or updating comics!"""
         logger.info(f"{ctx.author} trying to {'join' if join else 'leave'} {crew}")
 
@@ -813,7 +832,8 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         """Leave selected crew"""
         await self.crew_join.invoke(ctx, crew=crew, join=False)
 
-    async def snapshot_role(self, ctx, role: discord.Role, group: RoleGroup = None):
+    @staticmethod
+    async def snapshot_role(ctx, role: discord.Role, group: RoleGroup = None):
         """Adds role to the internal database"""
         if role.is_bot_managed() or role.is_integration() or role.is_premium_subscriber():
             logger.info(f"Skipping role '{role}' as it's system role")
