@@ -77,6 +77,7 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
     async def update_startup_time_loop(self):
         self._started_at = datetime.now()
         self.update_last_startup_time()
+        logger.info("Updated startup time file")
 
     @commands.Cog.listener()
     async def on_member_join(self, member):
