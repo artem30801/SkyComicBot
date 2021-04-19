@@ -794,6 +794,12 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
                 f"Sorry, but this command is unavailable as there is no **{db_role.name}** role "
                 f"on this server yet.")
 
+        if not utils.can_manage_role(ctx.guild.me, role):
+            await ctx.send(f"Sorry, I cannot manage role {role.mention}",
+                           allowed_mentions=discord.AllowedMentions.none(),
+                           hidden=True)
+            return
+
         member = ctx.author
         if join:
             if role in member.roles:
