@@ -58,7 +58,7 @@ class Errors(commands.Cog):
 
         message = [
             "{}, we have a problem!",
-            "{}, hjelp",
+            "{}, hjælp",
             "{}, something went wrong",
             "Whoops, {}, I've caught an error!",
             "Uhh, {}, help me!",
