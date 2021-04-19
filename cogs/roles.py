@@ -79,6 +79,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
 
         self.bot = bot
         self._sider_group = None
+        self.has_crews = False
 
         self.role_processor: db_utils.ModelProcessor = None
         self.group_processor: db_utils.ModelProcessor = None
@@ -115,11 +116,18 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
             if self._sider_group is None:
                 self._sider_group = await RoleGroup.get_or_none(name="Sider")
 
-        if self._sider_group is not None and db_utils.is_updated(updated_fields, "role"):
-            sider_choices = [create_choice(name=role.name, value=role.id)
-                             for role in await Role.filter(group=self._sider_group)][:24]
-            sider_choices.insert(0, create_choice(name="Noside", value=-1))
-            self.side_join.options[0]["choices"] = sider_choices
+        if db_utils.is_updated(updated_fields, "role"):
+            crews = [await Role.get_or_none(name=role) for role in (utils.stream_crew_role, utils.update_crew_role)]
+            crews = [create_choice(name=role.name, value=role.id) for role in crews if role is not None]
+            self.crew_join.options[0]["choices"] = crews
+            self.crew_leave.options[0]["choices"] = crews
+            self.has_crews = bool(crews)
+
+            if self._sider_group is not None:
+                sider_choices = [create_choice(name=role.name, value=role.id)
+                                 for role in await Role.filter(group=self._sider_group)][:24]
+                sider_choices.insert(0, create_choice(name="Noside", value=-1))
+                self.side_join.options[0]["choices"] = sider_choices
 
         await self.bot.slash.sync_all_commands()
 
@@ -279,7 +287,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
     async def group_info(self, ctx: SlashContext, group):
         """Shows info about specified group"""
         logger.debug(f"{self.format_caller(ctx)} checked group with ID '{group}'")
-        
+
         group = await RoleGroup.get(id=group)
         logger.debug(f"Group '{group.id}' is '{group.name}'")
 
@@ -298,6 +306,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
     @cog_ext.cog_subcommand(base="role", subcommand_group="group", name="list", guild_ids=guild_ids)
     async def group_list(self, ctx: SlashContext):
         """Shows a list of role groups with additional data"""
+
         async def display_group(group):
             state = await self.get_group_state(group)
             name = f"**{group.name}**"
@@ -365,7 +374,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
 
         old_name = group.name
         logger.db(f"Group {group.id} is '{old_name}'")
-        
+
         group = group.update_from_dict(params)
         await group.save()
         logger.db(f"Edited group {old_name} with params '{params}'")
@@ -437,7 +446,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         logger.info(f"{self.format_caller(ctx)} trying to assign '{role}' to {member}")
 
         if role in member.roles:
-            await ctx.send(f"Looks like {self.member_mention(ctx, member)} already have {role.mention} role ;)",
+            await ctx.send(f"Looks like {self.member_mention(ctx, member).lower()} already have {role.mention} role ;)",
                            allowed_mentions=discord.AllowedMentions.none(),
                            hidden=True)
             return
@@ -541,7 +550,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
                             ],
                             guild_ids=guild_ids)
     @has_bot_perms()
-    async def role_snapshot_role(self, ctx: SlashContext, role: discord.Role, group:  Optional[int] = None):
+    async def role_snapshot_role(self, ctx: SlashContext, role: discord.Role, group: Optional[int] = None):
         """Adds existing server role to the internal database (if bot cannot manage this role)"""
         logger.db(f"{self.format_caller(ctx)} trying to snapshot role '{role}' from '{ctx.guild}'")
         # await ctx.defer(hidden=True)
@@ -572,7 +581,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         if group:
             group = await RoleGroup.get_or_none(id=group)
         group = group or (await RoleGroup.get_or_create(name=utils.snapshot_role_group))[0]
-        
+
         new_roles = []
         for role in reversed(ctx.guild.roles[1:]):  # to exclude @everyone
             try:
@@ -645,7 +654,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
     async def role_edit(self, ctx: SlashContext, *args, **params):
         """Edits specified role"""
         logger.db(f"{self.format_caller(ctx)} trying to edit role with args '{args}' and params '{params}'")
-        
+
         await ctx.defer(hidden=True)
         params = await self.role_processor.process(params)
         role = params.pop("role")
@@ -714,11 +723,11 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
 
         await self.remove_conflicting_roles(ctx, member, group)
 
-        try:
-            role = await commands.RoleConverter().convert(ctx, side.name)
-        except commands.RoleNotFound:
+        role = discord.utils.get(ctx.guild.roles, name=side.name)
+        if role is None:
             logger.warning(f"Role with name '{side.name}'' not found")
             raise commands.BadArgument(f"Sorry, but there is no role for **{side.name}** on this server yet")
+
         await member.add_roles(role)
 
         if "Nixside" in previous_roles and role.name == "Drakeside":
@@ -731,7 +740,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
             message = "Splish-splash!"
         else:
             message = f"You're a **{role.name}** now!"
-        
+
         logger.info(f"{member} joined side '{role.name}'")
         await ctx.send(message)
 
@@ -739,47 +748,70 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
     async def side_leave(self, ctx: SlashContext):
         await self.side_join.invoke(ctx, side=-1)
 
-    @cog_ext.cog_subcommand(base="livestream_crew", name="join", options=[], guild_ids=guild_ids)
-    async def streamcrew_join(self, ctx: SlashContext, join=True):
-        """Receive 'livestream crew' role to get pings when LynxGriffin is streaming!"""
-        logger.info(f"{ctx.author} trying to {'join' if join else 'leave'} streamcrew")
+    @cog_ext.cog_subcommand(base="crew", name="join",
+                            options=[
+                                create_option(
+                                    name="crew",
+                                    description="Pick crew to join",
+                                    option_type=int,
+                                    required=True,
+                                ),
+                            ],
+                            guild_ids=guild_ids)
+    async def crew_join(self, ctx: SlashContext, crew, join=True):
+        """Receive crew roles to get pings when LynxGriffin is streaming or updating comics!"""
+        logger.info(f"{ctx.author} trying to {'join' if join else 'leave'} {crew}")
 
-        try:
-            db_role = await Role.get(name=utils.stream_crew_role)
-        except exceptions.DoesNotExist:
-            logger.warning(f"Can't find a role with name '{utils.stream_crew_role}' in the DB")
+        if not self.has_crews:
+            raise commands.CheckFailure(f"Sorry, but this command is unavailable as there is no crew roles in DB.")
+
+        await ctx.defer(hidden=True)
+        db_role = await Role.get(id=crew)
+
+        role = discord.utils.get(ctx.guild.roles, name=db_role.name)
+        if role is None:
+            logger.warning(f"Role with name '{db_role.name}' in not a valid role for {ctx.guild}")
             raise commands.CheckFailure(
-                f"Sorry, but this command is unavailable as there is no **{utils.stream_crew_role}** role in DB.")
-        try:
-            role = await commands.RoleConverter().convert(ctx, db_role.name)
-        except commands.RoleNotFound:
-            logger.warning(f"Role with name '{utils.stream_crew_role}' in not a valid role for {ctx.guild}")
-            raise commands.CheckFailure(
-                f"Sorry, but this command is unavailable as there is no **{utils.stream_crew_role}** role "
+                f"Sorry, but this command is unavailable as there is no **{db_role.name}** role "
                 f"on this server yet.")
 
         member = ctx.author
         if join:
             if role in member.roles:
-                logger.info(f"{ctx.author} already in streamcrew")
-                await ctx.send(f"Do you need **more** pings, {member.mention}? You're already in livestream crew")
+                logger.info(f"{ctx.author} already in {db_role.name}")
+                await ctx.send(f"Do you need **more** pings, {member.mention}? You're already in {role.mention}",
+                               allowed_mentions=discord.AllowedMentions(users=True, roles=False),
+                               hidden=True)
             else:
                 await member.add_roles(role)
-                logger.info(f"{ctx.author} joined streamcrew")
-                await ctx.send("Welcome to the livestream crew! Enjoy your pings ;)")
+                logger.info(f"{ctx.author} joined {db_role.name}")
+                await ctx.send(f"Welcome to the {role.mention}! Enjoy your pings ;)",
+                               allowed_mentions=discord.AllowedMentions.none(),
+                               hidden=True)
         else:
             if role not in member.roles:
-                logger.info(f"{ctx.author} is not in streamcrew")
-                await ctx.send("You're not in the livestream crew? Never have been 🔫")
+                logger.info(f"{ctx.author} is not in {db_role.name}")
+                await ctx.send(f"You're not in the {role.mention}? Never have been 🔫",
+                               allowed_mentions=discord.AllowedMentions.none(),
+                               hidden=True)
             else:
                 await member.remove_roles(role)
-                logger.info(f"{ctx.author} left streamcrew")
-                await ctx.send("Goodbye o7")
+                logger.info(f"{ctx.author} left {db_role.name}")
+                await ctx.send("Goodbye o7", hidden=True)
 
-    @cog_ext.cog_subcommand(base="livestream_crew", name="leave", guild_ids=guild_ids)
-    async def streamcrew_leave(self, ctx: SlashContext):
-        """Leave 'livestream crew'"""
-        await self.streamcrew_join.invoke(ctx, join=False)
+    @cog_ext.cog_subcommand(base="crew", name="leave",
+                            options=[
+                                create_option(
+                                    name="crew",
+                                    description="Pick crew to leave",
+                                    option_type=int,
+                                    required=True,
+                                ),
+                            ],
+                            guild_ids=guild_ids)
+    async def crew_leave(self, ctx: SlashContext, crew):
+        """Leave selected crew"""
+        await self.crew_join.invoke(ctx, crew=crew, join=False)
 
     async def snapshot_role(self, ctx, role: discord.Role, group: RoleGroup = None):
         """Adds role to the internal database"""
