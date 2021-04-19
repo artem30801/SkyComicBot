@@ -14,7 +14,7 @@ stream_crew_role = "livestream crew"
 snapshot_role_group = "Snapshot"
 db_log_level = 25
 important_log_level = 29
-guild_ids = [570257083040137237, 568072142843936778, 329097869070172161]  # TODO REMOVE
+guild_ids = None
 
 
 class AutoLogCog(commands.Cog):
