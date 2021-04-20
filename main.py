@@ -14,41 +14,51 @@ import cogs.cog_utils as utils
 from cogs.logging_utils import BufferingSocketHandler
 
 # from cogs.comics import Comics
-# from cogs.converters import Conversions
 
 nest_asyncio.apply()
 
 
 # https://discordapp.com/oauth2/authorize?&client_id=804306819660644372&scope=applications.commands%20bot&permissions=1446509632
 # scope=applications.commands%20bot
+class SkyComicBot(commands.Bot):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        SlashCommand(self, override_type=True)
+        self.current_dir = os.path.dirname(os.path.realpath(__file__))
+        self.config = {}
+        self.load_config("config.json")
+
+    def real_path(self, *paths):
+        return utils.abs_join(self.current_dir, *paths)
+
+    def load_config(self, path):
+        with open(self.real_path(path), "r") as f:
+            self.config = json.load(f)
+
+        self.owner_ids = set(self.config["discord"]["owner_ids"])
+        utils.guild_ids = self.config["discord"]["guild_ids"]
+
+    async def start(self):
+        await super().start(self.config["auth"]["discord_token"])
 
 
 async def main():
-    bot = commands.Bot(command_prefix=commands.when_mentioned_or("-", "!"), case_insensitive=True,
-                       intents=discord.Intents.all(), help_command=None)
-    SlashCommand(bot, override_type=True)
-
-    current_dir = os.path.dirname(os.path.realpath(__file__))
-    bot.current_dir = current_dir
-
-    with open(utils.abs_join(current_dir, "config.json"), "r") as f:
-        config = json.load(f)
-    bot.config = config
-
-    bot.owner_ids = set(config["discord"]["owner_ids"])
-    utils.guild_ids = config["discord"]["guild_ids"]
+    bot = SkyComicBot(command_prefix=commands.when_mentioned_or("$", "!"),
+                      help_command=None,
+                      case_insensitive=True,
+                      intents=discord.Intents.all())
 
     now = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    utils.ensure_dir(utils.abs_join(current_dir, "logs"))
+    utils.ensure_dir(utils.abs_join(bot.current_dir, "logs"))
 
     logging.setLoggerClass(utils.DBLogger)
     log_handlers = [
-        logging.FileHandler(utils.abs_join(current_dir, "logs", f"{now}.log")),
+        logging.FileHandler(bot.real_path("logs", f"{now}.log")),
         logging.StreamHandler()
     ]
     if "logging" in bot.config and "socket_handlers" in bot.config["logging"]:
         for num, handler in enumerate(bot.config["logging"]["socket_handlers"], start=1):
-            buffer = utils.abs_join(current_dir, "logs", f"log_buffer_{num}.bin")
+            buffer = bot.real_path("logs", f"log_buffer_{num}.bin")
             socket_handler = BufferingSocketHandler(handler["host"], handler["port"], buffer)
             socket_handler.closeOnError = True
             log_handlers.append(socket_handler)
@@ -77,11 +87,10 @@ async def main():
 
     models = ["cogs.greetings", "cogs.permissions", "cogs.roles", "cogs.converters", "cogs.models", ]  # "cogs.comics",
     try:
-        # db_url="sqlite://skybot.db"
         await Tortoise.init(db_url=bot.config["auth"]["db_url"],
                             modules={"models": models})
         await Tortoise.generate_schemas()
-        await bot.start(bot.config["auth"]["discord_token"])  # 1446509632
+        await bot.start()
     finally:
         await bot.logout()
         await Tortoise.close_connections()
