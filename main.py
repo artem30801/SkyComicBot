@@ -81,6 +81,7 @@ async def main():
     bot.load_extension("cogs.greetings")
     bot.load_extension("cogs.permissions")
     bot.load_extension("cogs.errors")
+    bot.load_extension("cogs.automod")
     bot.load_extension("cogs.reactions")
     bot.load_extension("cogs.emotes")
     bot.load_extension("cogs.roles")
