@@ -95,7 +95,9 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
 
         checks = {"blank nick": self.check_nick_blank,
                   "fresh account": self.check_fresh_account,
-                  "recently joined": self.check_recently_joined}
+                  "recently joined": self.check_recently_joined,
+                  "immediately joined": self.check_immidiate_join,
+                  }
         check_all = check == "all"
         to_check = list(checks.keys()) if check_all else [check]
         max_len = len(max(to_check, key=len))
@@ -202,16 +204,21 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                            f"letters, numbers or some meaningful symbols. Thank you (*^_^)／")
 
     def check_fresh_account(self, member: discord.Member):
-        return self._check_recent(member.created_at)
+        return self._check_recent(member.created_at, " old")
 
     def check_recently_joined(self, member: discord.Member):
-        return self._check_recent(member.joined_at or datetime.datetime.utcnow())
+        return self._check_recent(member.joined_at or datetime.datetime.utcnow(), " ago")
 
-    def _check_recent(self, time):
+    def _check_recent(self, time, extra=""):
         now = datetime.datetime.utcnow()
         delta = relativedelta.relativedelta(now, time)
         abs_delta = now - time
-        return abs_delta.days >= 3, utils.display_delta(delta)
+        return abs_delta.days >= 3, utils.display_delta(delta) + extra
+
+    def check_immidiate_join(self, member):
+        delta = relativedelta.relativedelta(member.joined_at, member.created_at)
+        abs_delta = member.created_at - member.joined_at
+        return delta.minutes <= 30, utils.display_delta(delta) + " between registration and joining"
 
 
 def setup(bot):
