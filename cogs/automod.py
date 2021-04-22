@@ -31,6 +31,8 @@ def check_blank(s, threshold=2):
 
 
 def bool_to_emoji(value):
+    if value is None:
+        return "ℹ"
     return "✅" if value else "❌"
 
 
@@ -107,10 +109,9 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             for check in to_check:
                 failed = []
                 for member in ctx.guild.members:
-                    if not checks[check](member)[0]:
+                    if checks[check](member)[0] is False:
                         mention = f"{member.mention} (*{member}*)"
                         failed.append(mention)
-                # failed_chunks = db_utils.chunks_split(failed)
                 results.append(f"{bool_to_emoji(not failed)} "
                                f"`{check: <{max_len}} ({len(failed):03d}/{len(ctx.guild.members):03d} members)`: "
                                f"{' | '.join(failed) or '**nobody**'}")
@@ -123,11 +124,10 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             results = []
             for check in to_check:
                 result = checks[check](member)
-                bool_res = not bool(result[0])
-                bools.append(bool_res)
+                bools.append(result[0] is False)
                 addition = f" *({result[1]})*" if result[1] else ""
-                results.append(f"{bool_to_emoji(not bool_res)} "
-                               f"`{check: <{max_len}}`: **{str(bool_res): <5}**{addition}")
+                results.append(f"{bool_to_emoji(result[0])} "
+                               f"`{check: <{max_len}}`: **{str(not result[0]): <5}**{addition}")
 
             await ctx.send(f"Check results for {member.mention} (*{member}*) "
                            f"**({sum(bools)}/{len(to_check)} checks failed)**: \n" + "\n".join(results),
@@ -210,7 +210,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
     def check_recently_joined(self, member: discord.Member):
         return self._check_recent(member.joined_at or datetime.datetime.utcnow(), " ago")
 
-    def _check_recent(self, time, extra=""):
+    def _check_recent(self, time, extra=""):  # true = ok
         now = datetime.datetime.utcnow()
         delta = relativedelta.relativedelta(now, time)
         abs_delta = now - time
@@ -219,7 +219,8 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
     def check_immidiate_join(self, member):
         delta = relativedelta.relativedelta(member.joined_at, member.created_at)
         abs_delta = member.joined_at - member.created_at
-        return abs_delta.seconds >= (30 * 60), utils.display_delta(delta) + " between registration and joining"
+        result = abs_delta.seconds >= (30 * 60) or None if self.check_recently_joined(member)[0] else False
+        return result, utils.display_delta(delta) + " between registration and joining"
 
 
 def setup(bot):
