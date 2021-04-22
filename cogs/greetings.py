@@ -16,21 +16,11 @@ from discord_slash import cog_ext, SlashContext
 from discord_slash.utils.manage_commands import create_option
 
 import cogs.cog_utils as utils
-from cogs.cog_utils import guild_ids
+from cogs.cog_utils import guild_ids, display_delta
 from cogs.models import HomeChannels
 from cogs.permissions import has_server_perms, has_bot_perms
 
 logger = logging.getLogger(__name__)
-
-
-def display_delta(delta):
-    d = {"month": delta.months,
-         "day": delta.days,
-         "hour": delta.hours,
-         "minute": delta.minutes,
-         "second": delta.seconds,
-         }
-    return ", ".join([f"{value} {key + 's' if value > 1 else key}" for key, value in d.items() if value > 0])
 
 
 class Greetings(utils.AutoLogCog, utils.StartupCog):

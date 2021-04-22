@@ -156,3 +156,15 @@ def can_manage_role(bot: Member, role: Role) -> bool:
         return True
 
     return False
+
+
+def display_delta(delta):
+    d = {
+        "year": delta.years,
+        "month": delta.months,
+        "day": delta.days,
+        "hour": delta.hours,
+        "minute": delta.minutes,
+        "second": delta.seconds,
+    }
+    return ", ".join([f"{value} {key + 's' if value > 1 else key}" for key, value in d.items() if value > 0])
