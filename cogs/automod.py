@@ -110,6 +110,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                     if not checks[check](member)[0]:
                         mention = f"{member.mention} (*{member}*)"
                         failed.append(mention)
+                # failed_chunks = db_utils.chunks_split(failed)
                 results.append(f"{bool_to_emoji(not failed)} "
                                f"`{check: <{max_len}} ({len(failed):03d}/{len(ctx.guild.members):03d} members)`: "
                                f"{' | '.join(failed) or '**nobody**'}")
@@ -218,7 +219,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
     def check_immidiate_join(self, member):
         delta = relativedelta.relativedelta(member.joined_at, member.created_at)
         abs_delta = member.created_at - member.joined_at
-        return delta.minutes <= 30, utils.display_delta(delta) + " between registration and joining"
+        return abs_delta.minutes <= 30, utils.display_delta(delta) + " between registration and joining"
 
 
 def setup(bot):
