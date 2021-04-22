@@ -91,7 +91,8 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
     @has_server_perms()
     async def manual_check(self, ctx: SlashContext, check="all", member=None):
         """Performs specified (or all) security checks on given (or all) members"""
-        await ctx.defer(hidden=True)
+        hidden = False  # todo hidden=false only in mod-logs channel
+        await ctx.defer(hidden=hidden)
 
         checks = {"blank nick": self.check_nick_blank,
                   "fresh account": self.check_fresh_account,
@@ -115,7 +116,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             for chunk in db_utils.chunks_split(results):
                 await ctx.send("\n".join(chunk),
                                allowed_mentions=discord.AllowedMentions.none(),
-                               hidden=True)
+                               hidden=hidden)
         else:
             bools = []
             results = []
@@ -130,8 +131,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             await ctx.send(f"Check results for {member.mention} (*{member}*) "
                            f"**({sum(bools)}/{len(to_check)} checks failed)**: \n" + "\n".join(results),
                            allowed_mentions=discord.AllowedMentions.none(),
-                           hidden=True
-                           )
+                           hidden=hidden)
 
     @staticmethod
     def ratelimit_check(cooldown, message):
