@@ -218,8 +218,8 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
 
     def check_immidiate_join(self, member):
         delta = relativedelta.relativedelta(member.joined_at, member.created_at)
-        abs_delta = member.created_at - member.joined_at
-        return abs_delta.seconds <= 30 * 60, utils.display_delta(delta) + " between registration and joining"
+        abs_delta = member.joined_at - member.created_at
+        return abs_delta.seconds >= (30 * 60), utils.display_delta(delta) + " between registration and joining"
 
 
 def setup(bot):
