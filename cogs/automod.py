@@ -6,6 +6,7 @@ from discord.ext import commands
 from discord_slash import cog_ext, SlashContext
 from discord_slash.utils.manage_commands import create_option, create_choice
 
+import collections
 import unicodedata
 import datetime
 from dateutil import relativedelta
@@ -65,7 +66,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
     # @commands.Cog.listener()
     # async def on_member_join(self, member):
     #     blank = self.check_nick_blank(member)[0]
-    #     if blank:
+    #     if not blank:
     #         await self.notify_nick_blank(member)
 
     @cog_ext.cog_subcommand(base="check", name="members",
@@ -219,7 +220,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
     def check_immidiate_join(self, member):
         delta = relativedelta.relativedelta(member.joined_at, member.created_at)
         abs_delta = member.joined_at - member.created_at
-        result = abs_delta.seconds >= (30 * 60) or None if self.check_recently_joined(member)[0] else False
+        result = abs_delta.seconds >= (30 * 60) or (None if self.check_recently_joined(member)[0] else False)
         return result, utils.display_delta(delta) + " between registration and joining"
 
 
