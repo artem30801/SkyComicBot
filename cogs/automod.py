@@ -9,6 +9,7 @@ from discord_slash.utils.manage_commands import create_option, create_choice
 import collections
 import unicodedata
 import datetime
+from datetime import timedelta
 from dateutil import relativedelta
 
 import cogs.cog_utils as utils
@@ -215,12 +216,12 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         now = datetime.datetime.utcnow()
         delta = relativedelta.relativedelta(now, time)
         abs_delta = now - time
-        return abs_delta.days >= 3, utils.display_delta(delta) + extra
+        return abs_delta >= timedelta(days=3), utils.display_delta(delta) + extra
 
     def check_immidiate_join(self, member):
         delta = relativedelta.relativedelta(member.joined_at, member.created_at)
         abs_delta = member.joined_at - member.created_at
-        result = abs_delta.seconds >= (30 * 60) or (None if self.check_recently_joined(member)[0] else False)
+        result = abs_delta >= timedelta(minutes=30) or (None if self.check_recently_joined(member)[0] else False)
         return result, utils.display_delta(delta) + " between registration and joining"
 
 
