@@ -6,7 +6,6 @@ from discord.ext import commands
 from discord_slash import cog_ext, SlashContext
 from discord_slash.utils.manage_commands import create_option, create_choice
 
-import collections
 import unicodedata
 import datetime
 from datetime import timedelta
@@ -15,7 +14,7 @@ from dateutil import relativedelta
 import cogs.cog_utils as utils
 import cogs.db_utils as db_utils
 from cogs.cog_utils import guild_ids
-from cogs.permissions import has_server_perms, has_bot_perms
+from cogs.permissions import has_server_perms
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +45,8 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         self.bot = bot
 
         self.blank_threshold = 2
-        self.recent = relativedelta.relativedelta(days=3)
+        self.recent_join = timedelta(days=3)
+        self.immediatly_join = timedelta(minutes=30)
 
         self.rate = 10  # times
         self.per = 30  # per seconds
@@ -87,7 +87,8 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                                         create_choice("all", "all"),
                                         create_choice("blank nick", "blank nick"),
                                         create_choice("fresh account", "fresh account"),
-                                        create_choice("recently joined", "recently joined")
+                                        create_choice("recently joined", "recently joined"),
+                                        create_choice("immediately joined", "immediately joined"),
                                     ]
                                 ),
                             ],
@@ -216,12 +217,12 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         now = datetime.datetime.utcnow()
         delta = relativedelta.relativedelta(now, time)
         abs_delta = now - time
-        return abs_delta >= timedelta(days=3), utils.display_delta(delta) + extra
+        return abs_delta >= self.recent_join, utils.display_delta(delta) + extra
 
     def check_immidiate_join(self, member):
         delta = relativedelta.relativedelta(member.joined_at, member.created_at)
         abs_delta = member.joined_at - member.created_at
-        result = abs_delta >= timedelta(minutes=30) or (None if self.check_recently_joined(member)[0] else False)
+        result = abs_delta >= self.immediatly_join or (None if self.check_recently_joined(member)[0] else False)
         return result, utils.display_delta(delta) + " between registration and joining"
 
 
