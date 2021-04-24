@@ -9,6 +9,7 @@ from tortoise.models import Model
 
 import cogs.cog_utils as utils
 from cogs.permissions import has_bot_perms
+from cogs.models import HomeChannels
 
 logger = logging.getLogger(__name__)
 
@@ -40,15 +41,21 @@ class ChannelSetup(Model):
     channel_id = fields.BigIntField()
     channel_type = fields.IntField()
 
-# /channel check Optional[channel]
-# /channel check_all
 
-class Channels(utils.AutoLogCog):
+class Channels(utils.AutoLogCog, utils.StartupCog):
     """Cog that manages bot channels (e.g. home channel, update notification, ...)"""
 
     def __init__(self, bot):
         utils.AutoLogCog.__init__(self, logger)
+        utils.StartupCog.__init__(self)
         self.bot = bot
+
+    async def on_startup(self):
+        existing_home_channels = await HomeChannels.all()
+        for channel in existing_home_channels:
+            logger.db(f"Converting home channel in guild with id '{channel.guild_id}' to channel setup")
+            await ChannelSetup.create(guild_id=channel.guild_id, channel_id=channel.channel_id, channel_type=ChannelType.HOME.value[0])
+            await channel.delete()
 
     @cog_ext.cog_subcommand(base="channel", subcommand_group="type", name="set",
                             options=[
