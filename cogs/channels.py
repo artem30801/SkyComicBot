@@ -201,6 +201,31 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
                 results.append(f"There is no channels with type '{ch_type_name}'")
         
         await ctx.send('\n'.join(results), hidden=True)
+
+    @cog_ext.cog_subcommand(base="channel", subcommand_group="list", name="database", guild_ids=utils.guild_ids)
+    @has_bot_perms()
+    async def list_database(self, ctx: SlashContext):
+        """Lists all chanel setup entries in the database"""
+        await ctx.defer(hidden=True)
+        logger.db(f"'{ctx.author}' trying to list database")
+
+        setups = await ChannelSetup.all()
+        if not setups:
+            await ctx.send("Database is empty", hidden=True)
+            return
+
+        result = ""
+        for ch_setup in setups:
+            guild = await self.bot.fetch_guild(ch_setup.guild_id)
+            channel = await self.bot.fetch_channel(ch_setup.channel_id)
+            type_name = ChannelType.get_name_by_index(ch_setup.channel_type)
+            line = f"{channel.mention} in '{guild}'' has type '{type_name}'\n"
+            if len(result) + len(line) >= 2000:
+                await ctx.send(result, hidden=True)
+                result = ""
+            result += line
+        
+        await ctx.send(result, hidden=True)
         
 
 def setup(bot):
