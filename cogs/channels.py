@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class ChannelType(Enum):
+    # 0 reserved for All
     HOME = 1, "Home channel"
     UPDATE = 2, "Update notify channel"
     JOIN_CHECK = 3, "Automatic check channel"
@@ -30,10 +31,18 @@ class ChannelType(Enum):
     @staticmethod
     def get_name_by_index(index: int):
         return ChannelType.get_by_index(index).value[1]
-    
+
+    @staticmethod
+    def is_default_index(index: int):
+        return index == 0
+
     @staticmethod
     def get_choices():
         return [create_choice(name=ch_type.value[1], value=ch_type.value[0]) for ch_type in ChannelType]
+    
+    @staticmethod
+    def get_choices_with_default(default_name: str = "Any"):
+        return [create_choice(name=default_name, value=0)] + ChannelType.get_choices()
 
 
 class ChannelSetup(Model):
@@ -105,7 +114,7 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
                                     name="type",
                                     description="Type of the channel to clear",
                                     option_type=int,
-                                    choices=ChannelType.get_choices(),
+                                    choices=ChannelType.get_choices_with_default("All"),
                                     required=True
                                 ),
                                 create_option(
@@ -120,26 +129,25 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
         """Removes type from the selected channel (or this one by default)"""
         await ctx.defer(hidden=True)
         channel = channel or ctx.channel
-        channel_type_name = ChannelType.get_name_by_index(type_idx)
-        channel_id = channel.id
-        guild_id = ctx.guild_id
-        logger.db(f"'{ctx.author}' trying to remove type '{channel_type_name}' from '{channel}' in '{ctx.guild}'")
+        type_string = "all types" if ChannelType.is_default_index(type_idx) else f"type '{ChannelType.get_name_by_index(type_idx)}'"
+        logger.db(f"'{ctx.author}' trying to remove {type_string} from '{channel}' in '{ctx.guild}'")
 
-        existing_setup = await ChannelSetup.get_or_none(guild_id=guild_id, channel_id = channel_id, channel_type=type_idx)
-        if existing_setup is None:
-            await ctx.send(f"{channel.mention} don't have type '{channel_type_name}'", hidden=True)
+        channel_setups = await ChannelSetup.filter(guild_id=ctx.guild_id, channel_id=channel.id)
+        if not channel_setups:
+            await ctx.send(f"{channel.mention} don't have any type set", hidden=True)
             return
-        
-        await existing_setup.delete()
-        logger.db(f"Remove type '{channel_type_name}' from '{channel}' in '{ctx.guild}'")
 
-        existing_channels = await ChannelSetup.filter(guild_id=guild_id, channel_type=type_idx)
-        success_msg = f"Remove type '{channel_type_name}' for {channel.mention}"
-        if existing_channels:
-            mentions = [ctx.guild.get_channel(channel.channel_id).mention for channel in existing_channels]
-            await ctx.send(f"{success_msg}. Channels with this type: {', '.join(mentions)}")
-        else:
-            await ctx.send(f"{success_msg}. There is no more channels with this type", hidden=True)
+        removed_types = []
+        for ch_setup in channel_setups:
+            if not ChannelType.is_default_index(type_idx) and ch_setup.channel_type != type_idx:
+                continue
+            channel_type = ChannelType.get_by_index(ch_setup.channel_type)
+            removed_types.append(channel_type)
+            await ch_setup.delete()
+            logger.db(f"Removed type '{channel_type.value[1]}' from '{channel}' in '{ctx.guild}'")
+
+        removed_types = [f"'{ch_type.value[1]}'" for ch_type in removed_types]
+        await ctx.send(f"Removed {', '.join(removed_types)} {'types' if len(removed_types) > 1 else 'type'} from {channel.mention}", hidden=True)
 
     @cog_ext.cog_subcommand(base="channel", subcommand_group="list", name="types",
                             options=[
@@ -172,17 +180,17 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
                                     name="type",
                                     description="Type to list channels",
                                     option_type=int,
-                                    choices=ChannelType.get_choices(),
-                                    required=False
+                                    choices=ChannelType.get_choices_with_default("Any"),
+                                    required=True
                                 )
                             ], guild_ids=utils.guild_ids)
     @has_bot_perms()
-    async def list_channels(self, ctx: SlashContext, type_idx: int = None):
-        """Lists all channels with the selected type (or with any type be default)"""
+    async def list_channels(self, ctx: SlashContext, type_idx: int):
+        """Lists all channels with the selected type (or with any type)"""
         await ctx.defer(hidden=True)
         guild_id = ctx.guild_id
-        logger.db(f"'{ctx.author}' trying to list channels with {type_idx or 'all'} {'type index' if type_idx else 'types'} in '{ctx.guild}'")
-        types = [ChannelType.get_by_index(type_idx)] if type_idx else ChannelType
+        logger.db(f"'{ctx.author}' trying to list channels with {type_idx} type index in '{ctx.guild}'")
+        types = ChannelType if ChannelType.is_default_index(type_idx) else [ChannelType.get_by_index(type_idx)]
 
         channels = await ChannelSetup.filter(guild_id=guild_id)
         if not channels:
