@@ -85,8 +85,9 @@ async def main():
     bot.load_extension("cogs.reactions")
     bot.load_extension("cogs.emotes")
     bot.load_extension("cogs.roles")
+    bot.load_extension("cogs.channels")
 
-    models = ["cogs.greetings", "cogs.permissions", "cogs.roles", "cogs.converters", "cogs.models", ]  # "cogs.comics",
+    models = ["cogs.greetings", "cogs.permissions", "cogs.roles", "cogs.converters", "cogs.channels", ]  # "cogs.comics",
     try:
         await Tortoise.init(db_url=bot.config["auth"]["db_url"],
                             modules={"models": models})
