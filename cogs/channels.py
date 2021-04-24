@@ -99,24 +99,24 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
             mentions = [ctx.guild.get_channel(channel.channel_id).mention for channel in existing_channels]
             await ctx.send(f"{success_msg}. Channels with this type: {', '.join(mentions)}")
 
-    @cog_ext.cog_subcommand(base="channel", subcommand_group="type", name="remove",
+    @cog_ext.cog_subcommand(base="channel", subcommand_group="type", name="clear",
                             options=[
                                 create_option(
                                     name="type",
-                                    description="Type of the channel to remove",
+                                    description="Type of the channel to clear",
                                     option_type=int,
                                     choices=ChannelType.get_choices(),
                                     required=True
                                 ),
                                 create_option(
                                     name="channel",
-                                    description="Channel to remove the type from (this by default)",
+                                    description="Channel to clear the type from (this by default)",
                                     option_type=discord.TextChannel,
                                     required=False
                                 )
                             ], guild_ids=utils.guild_ids)
     @has_bot_perms()
-    async def remove_type(self, ctx: SlashContext, type_idx: int, channel: discord.TextChannel = None):
+    async def clear_type(self, ctx: SlashContext, type_idx: int, channel: discord.TextChannel = None):
         """Removes type from the selected channel (or this one by default)"""
         await ctx.defer(hidden=True)
         channel = channel or ctx.channel
@@ -173,23 +173,34 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
                                     description="Type to list channels",
                                     option_type=int,
                                     choices=ChannelType.get_choices(),
-                                    required=True
+                                    required=False
                                 )
                             ], guild_ids=utils.guild_ids)
     @has_bot_perms()
-    async def list_channels(self, ctx: SlashContext, type_idx: int):
-        """Lists all channels with the selected type"""
+    async def list_channels(self, ctx: SlashContext, type_idx: int = None):
+        """Lists all channels with the selected type (or with any type be default)"""
         await ctx.defer(hidden=True)
         guild_id = ctx.guild_id
-        type_name = ChannelType.get_name_by_index(type_idx)
-        logger.db(f"'{ctx.author}' trying to list channels with '{type_name}' type in '{ctx.guild}'")
+        logger.db(f"'{ctx.author}' trying to list channels with {type_idx or 'all'} {'type index' if type_idx else 'types'} in '{ctx.guild}'")
+        types = [ChannelType.get_by_index(type_idx)] if type_idx else ChannelType
 
-        channels = await ChannelSetup.filter(guild_id=guild_id, channel_type=type_idx)
-        channels = [ctx.guild.get_channel(setup.channel_id).mention for setup in channels]
-        if channels:
-            await ctx.send(f"Channels with type '{type_name}': {', '.join(channels)}", hidden=True)
-        else:
-            await ctx.send(f"There is no channels with type '{type_name}'", hidden=True)
+        channels = await ChannelSetup.filter(guild_id=guild_id)
+        if not channels:
+            await ctx.send("There is no set channels", hidden=True)
+            return
+
+        results = []
+        for ch_type in types:
+            ch_type_idx = ch_type.value[0]
+            ch_type_name = ch_type.value[1]
+
+            type_channels = [ctx.guild.get_channel(setup.channel_id).mention for setup in channels if setup.channel_type == ch_type_idx]
+            if type_channels:
+                results.append(f"Channels with type '{ch_type_name}': {', '.join(type_channels)}")
+            elif type_idx: # Don't send no channels notifications if this was list all types command
+                results.append(f"There is no channels with type '{ch_type_name}'")
+        
+        await ctx.send('\n'.join(results), hidden=True)
         
 
 def setup(bot):
