@@ -17,9 +17,10 @@ logger = logging.getLogger(__name__)
 class ChannelType(Enum):
     # 0 reserved for All
     HOME = 1, "Home channel"
-    UPDATE = 2, "Update notify channel"
-    JOIN_CHECK = 3, "Automatic check channel"
-    NO_REACTIONS = 4, "No reactions channel"
+    UPDATE_MONITOR = 2, "Montitor update channel"
+    UPDATE_NOTIFY = 3, "Update notify channel"
+    JOIN_CHECK = 4, "Check result channel"
+    NO_REACTIONS = 5, "No reactions channel"
 
     @staticmethod
     def get_by_index(index: int):
@@ -65,6 +66,27 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
             logger.db(f"Converting home channel in guild with id '{channel.guild_id}' to channel setup")
             await ChannelSetup.create(guild_id=channel.guild_id, channel_id=channel.channel_id, channel_type=ChannelType.HOME.value[0])
             await channel.delete()
+
+    async def get_home_channels(self, guild: discord.Guild) -> [discord.TextChannel]:
+        channels = await ChannelSetup.filter(guild_id=guild.id, channel_type = ChannelType.HOME.value[0])
+        channels = [guild.get_channel(channel.channel_id) for channel in channels]
+        return channels
+
+    async def is_update_monitor_channel(self, channel: discord.TextChannel) -> bool:
+        return await ChannelSetup.exists(channel_id=channel.id, channel_type=ChannelType.UPDATE_MONITOR.value[0])
+
+    async def get_update_notify_channels(self, guild: discord.Guild) -> [discord.TextChannel]:
+        channels = await ChannelSetup.filter(guild_id=guild.id, channel_type = ChannelType.UPDATE_NOTIFY.value[0])
+        channels = [guild.get_channel(channel.channel_id) for channel in channels]
+        return channels
+
+    async def get_join_check_channels(self, guild: discord.Guild) -> [discord.TextChannel]:
+        channels = await ChannelSetup.filter(guild_id=guild.id, channel_type = ChannelType.JOIN_CHECK.value[0])
+        channels = [guild.get_channel(channel.channel_id) for channel in channels]
+        return channels
+
+    async def is_no_reactions_channel(self, channel: discord.TextChannel) -> bool:
+        return await ChannelSetup.exists(channel_id=channel.id, channel_type=ChannelType.NO_REACTIONS.value[0])
 
     @cog_ext.cog_subcommand(base="channel", subcommand_group="type", name="set",
                             options=[

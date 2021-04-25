@@ -9,8 +9,6 @@ from discord_slash import SlashContext
 from fuzzywuzzy import fuzz
 from fuzzywuzzy import process
 
-from cogs.models import HomeChannels
-
 embed_color = 0x72a3f2
 bot_manager_role = "skybox manager"
 stream_crew_role = "livestream crew"
@@ -138,15 +136,6 @@ def can_bot_respond(bot: Bot, channel: TextChannel) -> bool:
     bot_as_member = channel.guild.get_member(bot.user.id)
     permissions = channel.permissions_for(bot_as_member)
     return permissions.send_messages
-
-
-async def get_home_channel(guild: Guild) -> TextChannel:
-    home_channel = await HomeChannels.get_or_none(guild_id=guild.id)
-    if home_channel is None:
-        return guild.system_channel
-    if home_channel.channel_id is None:
-        return None
-    return guild.get_channel(home_channel.channel_id)
 
 
 def can_manage_role(bot: Member, role: Role) -> bool:
