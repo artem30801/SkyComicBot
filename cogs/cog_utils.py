@@ -34,7 +34,9 @@ class AutoLogCog(commands.Cog):
 
     @classmethod
     def format_caller(cls, ctx):
-        return cls.format_stack(ctx.guild, ctx.channel, ctx.author)
+        return cls.format_stack(getattr(ctx, "guild", None),
+                                getattr(ctx, "channel", None),
+                                getattr(ctx, "author", ctx))
 
     @classmethod
     def format_command(cls, ctx):
