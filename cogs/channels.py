@@ -52,23 +52,15 @@ class ChannelSetup(Model):
     channel_type = fields.IntField()
 
 
-class Channels(utils.AutoLogCog, utils.StartupCog):
+class Channels(utils.AutoLogCog):
     """Cog that manages bot channels (e.g. home channel, update notification, ...)"""
 
     def __init__(self, bot):
         utils.AutoLogCog.__init__(self, logger)
-        utils.StartupCog.__init__(self)
         self.bot = bot
 
-    async def on_startup(self):
-        existing_home_channels = await HomeChannels.all()
-        for channel in existing_home_channels:
-            logger.db(f"Converting home channel in guild with id '{channel.guild_id}' to channel setup")
-            await ChannelSetup.create(guild_id=channel.guild_id, channel_id=channel.channel_id, channel_type=ChannelType.HOME.value[0])
-            await channel.delete()
-
     async def get_home_channels(self, guild: discord.Guild) -> [discord.TextChannel]:
-        channels = await ChannelSetup.filter(guild_id=guild.id, channel_type = ChannelType.HOME.value[0])
+        channels = await ChannelSetup.filter(guild_id=guild.id, channel_type=ChannelType.HOME.value[0])
         channels = [guild.get_channel(channel.channel_id) for channel in channels]
         return channels
 
