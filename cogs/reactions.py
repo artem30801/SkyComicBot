@@ -38,18 +38,20 @@ class Reactions(commands.Cog):
         if message.author.bot:
             return
 
-        if message.guild and message.channel and message.channel.id == self.real_life_channel_id:
-            return
-
-        if message.guild and message.channel and message.channel.id == self.updates_channel_id:
-            logger.info("Reacted on update")
-            home_channel = await utils.get_home_channel(message.guild)
-            try:
-                role = await commands.RoleConverter().convert(message, utils.update_crew_role)
-            except RoleNotFound:
-                role = None
-            await home_channel.send(self.get_update_message(role.mention if role else "Folks", message.channel.mention))
-            return
+        if message.guild and message.channel:
+            if await self.bot.get_cog("Channels").is_no_reactions_channel(message.channel):
+                return
+            
+            if await self.bot.get_cog("Channels").is_update_monitor_channel(message.channel):
+                logger.info("Reacted on update")
+                try:
+                    role = await commands.RoleConverter().convert(message, utils.update_crew_role)
+                except RoleNotFound:
+                    role = None
+                notify_message = self.get_update_message(role.mention if role else "Folks", message.channel.mention)
+                notify_channels = await self.bot.get_cog("Channels").get_update_notify_channels(message.guild)
+                for channel in notify_channels:
+                    await channel.send(notify_message)
 
         for keys, react in self._reactions.items():
             if any(contains_word(message.content, key) for key in keys):

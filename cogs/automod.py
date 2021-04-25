@@ -198,14 +198,18 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
     def check_nick_blank(self, member):
         return check_blank(member.display_name, self.blank_threshold), None
 
-    async def notify_nick_blank(self, member):
+    async def notify_nick_blank(self, member: discord.Member):
         logger.important(f"Member {self.format_caller(member)} has blank nickname ({member.display_name})")
-        channel = await utils.get_home_channel(member.guild)
-        if channel is None or utils.can_bot_respond(member.guild.me, channel):
-            return
-        await channel.send(f"Hey, {member.mention}, you have a blank or hard-readable username!"
-                           f"Please change it so it has at least {self.blank_threshold} "
-                           f"letters, numbers or some meaningful symbols. Thank you (*^_^)／")
+
+        channels = await self.bot.get_cog("Channels").get_home_channels(member.guild)
+        for channel in channels:
+            if not utils.can_bot_respond(self.bot, channel):
+                continue
+            
+            await channel.send(f"Hey, {member.mention}, you have a blank or hard-readable username!"
+                            f"Please change it so it has at least {self.blank_threshold} "
+                            f"letters, numbers or some meaningful symbols. Thank you (*^_^)／")
+            return # No need to send few notification, if there is a few home channels
 
     def check_fresh_account(self, member: discord.Member):
         return self._check_recent(member.created_at, " old")
