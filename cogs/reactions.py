@@ -70,7 +70,10 @@ class Reactions(commands.Cog):
     async def hug(self, message):
         collection = self.bot.emojis
         emoji = discord.utils.get(collection, name='griffin_hug')
-        await message.add_reaction(emoji)
+        if emoji:
+            await message.add_reaction(emoji)
+        else:
+            logger.warning("Failed to get hug emoji!")
     
     @staticmethod
     def get_update_message(update_role, update_channel) -> str:
