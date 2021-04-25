@@ -103,6 +103,10 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
     @has_bot_perms()
     async def home_channel_notify(self, ctx: SlashContext, message="", attachment_link=None):
         """Sends message with the attachment to the home channels of the guilds from the bot"""
+        if not message and not attachment_link:
+            await ctx.send("Can't send an empty message", hidden=True)
+            return
+
         file = None
         name = ""
         if attachment_link is not None:
