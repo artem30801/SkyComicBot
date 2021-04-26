@@ -104,17 +104,17 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
 
         channels = []
         async for channel_setup in setups:
-            channels.append(self._get_channel(channel_setup))
+            channels.append(await self._get_channel(channel_setup))
         return channels
 
     async def get_home_channels(self, guild: discord.Guild = None) -> [discord.TextChannel]:
-        return self.get_channels(guild, ChannelType.HOME.value)
+        return await self.get_channels(guild, ChannelType.HOME.value)
 
     async def get_mod_log_channels(self, guild: discord.Guild = None) -> [discord.TextChannel]:
-        return self.get_channels(guild, ChannelType.MOD_LOG.value)
+        return await self.get_channels(guild, ChannelType.MOD_LOG.value)
 
     async def get_update_notify_channels(self, guild: discord.Guild = None) -> [discord.TextChannel]:
-        return self.get_channels(guild, ChannelType.UPDATE_NOTIFY.value)
+        return await self.get_channels(guild, ChannelType.UPDATE_NOTIFY.value)
 
     @staticmethod
     async def is_channel_type(channel: discord.TextChannel, channel_type: int):
@@ -167,7 +167,7 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
             await ctx.send(f"{success_msg}. This is the only channel with this type", hidden=True)
         else:
             mentions = [ctx.guild.get_channel(channel.channel_id).mention for channel in existing_channels]
-            await ctx.send(f"{success_msg}. Channels with this type: {', '.join(mentions)}")
+            await ctx.send(f"{success_msg}. Channels with this type: {', '.join(mentions)}", hidden=True)
 
         await self.update_channels()
 

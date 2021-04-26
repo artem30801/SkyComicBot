@@ -137,6 +137,9 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
     async def send_home_channels_message(self, message: str, attachment=None, attachment_name=""):
         channels = await self.bot.get_cog("Channels").get_home_channels()
         for channel in channels:
+            if channel.guild not in self.bot.guilds:
+                continue
+
             if utils.can_bot_respond(self.bot, channel):
                 file = discord.File(io.BytesIO(attachment), attachment_name) if attachment is not None else None
                 await channel.send(message, file=file)
