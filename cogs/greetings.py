@@ -43,6 +43,7 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
 
         last_activity = self.get_last_activity_time()
         self._started_at = datetime.utcnow()
+        self._last_active_at = datetime.utcnow()
         self.update_activity_time_loop.start()
 
         # Don't send greetings if last activity was less than a 3 hours ago
