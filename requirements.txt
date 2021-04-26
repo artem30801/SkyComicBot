@@ -6,3 +6,4 @@ discord-py-slash-command
 python-dateutil
 fuzzywuzzy
 aiohttp
+colour
