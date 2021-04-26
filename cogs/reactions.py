@@ -47,7 +47,7 @@ class Reactions(commands.Cog):
 
         for keys, react in self._reactions.items():
             if any(contains_word(message.content, key) for key in keys):
-                logger.debug(f"Reacted to {message.content} message (contains {keys})")
+                logger.debug(f"Reacted to '{message.content}' message (contains {keys})")
                 await react(message)
                 break
 
