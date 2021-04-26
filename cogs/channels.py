@@ -104,7 +104,9 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
 
         channels = []
         async for channel_setup in setups:
-            channels.append(await self._get_channel(channel_setup))
+            channel = await self._get_channel(channel_setup)
+            if channel:
+                channels.append(channel)
         return channels
 
     async def get_home_channels(self, guild: discord.Guild = None) -> [discord.TextChannel]:
