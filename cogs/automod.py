@@ -16,6 +16,8 @@ import cogs.db_utils as db_utils
 from cogs.cog_utils import guild_ids
 from cogs.permissions import has_server_perms
 
+from colour import Color
+
 logger = logging.getLogger(__name__)
 
 categories = ["Ll", "Lo", "Lt", "Lu", "Nd", "Nl", "No", "Ps", "So"]
@@ -57,6 +59,21 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         self._spam_report_cooldown = commands.CooldownMapping.from_cooldown(
             1, 5 * 60, commands.BucketType.guild)
 
+        self.checks = {"blank nick": self.check_nick_blank,
+                       "fresh account": self.check_fresh_account,
+                       "recently joined": self.check_recently_joined,
+                       "immediately joined": self.check_immidiate_join,
+                       }
+        self.update_options()
+
+    def update_options(self):
+        choices = [create_choice(name=check.capitalize(), value=check) for check in self.checks.keys()]
+        choices = [create_choice(name="All", value="all")] + choices + \
+                  [create_choice(name="None (stats and ifo only)", value="none")]
+
+        self.check_member.options[1]["choices"] = choices
+        self.check_server.options[0]["choices"] = choices
+
     @commands.Cog.listener()
     async def on_message(self, message):
         if message.author == message.guild.me:
@@ -70,72 +87,127 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
     #     if not blank:
     #         await self.notify_nick_blank(member)
 
-    @cog_ext.cog_subcommand(base="check", name="members",
+    def get_to_check(self, check):
+        if check == "none":
+            return []
+        if check == "all":
+            return list(self.checks.keys())
+        return [check]
+
+    @staticmethod
+    def get_check_color(failed_count, total, intolerance=1):
+        red = Color("red")
+        colors = list(Color("green").range_to(red, max(total - intolerance, 2)))
+        colors += [red] * intolerance
+
+        return db_utils.convert_color(colors[failed_count].hex_l)
+
+    @cog_ext.cog_subcommand(base="check", name="member",
                             options=[
                                 create_option(
                                     name="member",
                                     description="Member to perform check on (or all members)",
                                     option_type=discord.Member,
-                                    required=False,
+                                    required=True,
                                 ),
                                 create_option(
                                     name="check",
                                     description="Check to perform",
                                     option_type=str,
                                     required=False,
-                                    choices=[
-                                        create_choice("all", "all"),
-                                        create_choice("blank nick", "blank nick"),
-                                        create_choice("fresh account", "fresh account"),
-                                        create_choice("recently joined", "recently joined"),
-                                        create_choice("immediately joined", "immediately joined"),
-                                    ]
+                                    choices=[]
                                 ),
                             ],
                             guild_ids=guild_ids)
     @has_server_perms()
-    async def manual_check(self, ctx: SlashContext, check="all", member=None):
+    async def check_member(self, ctx: SlashContext, member: discord.Member, check="all"):
         """Performs specified (or all) security checks on given (or all) members"""
-        hidden = False  # todo hidden=false only in mod-logs channel
-        await ctx.defer(hidden=hidden)
+        await ctx.defer(hidden=False)
+        to_check = self.get_to_check(check)
 
-        checks = {"blank nick": self.check_nick_blank,
-                  "fresh account": self.check_fresh_account,
-                  "recently joined": self.check_recently_joined,
-                  "immediately joined": self.check_immidiate_join,
-                  }
-        check_all = check == "all"
-        to_check = list(checks.keys()) if check_all else [check]
-        max_len = len(max(to_check, key=len))
-        if member is None:
-            results = [f"Check results for *{len(ctx.guild.members)} members*:"]
-            for check in to_check:
-                failed = []
-                for member in ctx.guild.members:
-                    if checks[check](member)[0] is False:
-                        mention = f"{member.mention} (*{member}*)"
-                        failed.append(mention)
-                results.append(f"{bool_to_emoji(not failed)} "
-                               f"`{check: <{max_len}} ({len(failed):03d}/{len(ctx.guild.members):03d} members)`: "
-                               f"{' | '.join(failed) or '**nobody**'}")
-            for chunk in db_utils.chunks_split(results):
-                await ctx.send("\n".join(chunk),
-                               allowed_mentions=discord.AllowedMentions.none(),
-                               hidden=hidden)
-        else:
-            bools = []
-            results = []
-            for check in to_check:
-                result = checks[check](member)
-                bools.append(result[0] is False)
-                addition = f" *({result[1]})*" if result[1] else ""
-                results.append(f"{bool_to_emoji(result[0])} "
-                               f"`{check: <{max_len}}`: **{str(not result[0]): <5}**{addition}")
+        embed = discord.Embed()
+        embed.set_author(name=member.name, icon_url=member.avatar_url)
 
-            await ctx.send(f"Check results for {member.mention} (*{member}*) "
-                           f"**({sum(bools)}/{len(to_check)} checks failed)**: \n" + "\n".join(results),
-                           allowed_mentions=discord.AllowedMentions.none(),
-                           hidden=hidden)
+        failed_count = 0
+        for check in to_check:
+            result = self.checks[check](member)
+            is_failed = result[0] is False
+            addition = f"\n*{result[1]}*" if result[1] else ""
+            if is_failed:
+                failed_count += 1
+
+            embed.add_field(name=check.capitalize(),
+                            value=f"{bool_to_emoji(result[0])} __{'Failed' if is_failed else 'Passed'}__"
+                                  f"{addition}",
+                            inline=False)
+
+        embed.colour = self.get_check_color(failed_count, len(to_check))
+        embed.title = "User check results"
+        if to_check:
+            embed.description = f"*{failed_count}/{len(to_check)}* checks failed"
+
+        embed.insert_field_at(0, name="User info",
+                              value=f"*Mention:* {member.mention}\n"
+                                    f"*Name:* {member}\n"
+                                    f"*ID:* {member.id}\n"
+                                    f"*Roles:* {', '.join([role.mention for role in member.roles[1:]]) or 'None'}",
+                              inline=False)
+
+        await ctx.send(embed=embed)
+
+    @cog_ext.cog_subcommand(base="check", name="server",
+                            options=[
+                                create_option(
+                                    name="check",
+                                    description="Check to perform",
+                                    option_type=str,
+                                    required=False,
+                                    choices=[]
+                                ),
+                            ],
+                            guild_ids=guild_ids)
+    async def check_server(self, ctx: SlashContext, check="all"):
+        await ctx.defer(hidden=False)
+        to_check = self.get_to_check(check)
+
+        embed = discord.Embed()
+        embed.set_author(name=ctx.guild.name, icon_url=ctx.guild.icon_url)
+        total_failed = 0
+        failed_members = set()
+        for check in to_check:
+            failed = []
+            for member in ctx.guild.members:
+                if self.checks[check](member)[0] is False:
+                    mention = f"- {member.mention} ({member})"
+                    failed.append(mention)
+                    failed_members.add(member)
+
+            value = f"{bool_to_emoji(not failed)} "
+            if not failed:
+                value += "Passed"
+            else:
+                total_failed += 1
+                failed_str = '\n'.join(failed)
+                value += f"Failed **{len(failed)}/{ctx.guild.member_count}** members:\n {failed_str}"
+
+            embed.add_field(name=check.capitalize(), value=value, inline=False)
+
+        embed.colour = self.get_check_color(total_failed, len(to_check), intolerance=0)
+        embed.title = "Server check results"
+        # embed.description =
+        if to_check:
+            embed.insert_field_at(0, name="Summary",
+                                  value=f"**{total_failed}/{len(to_check)}** checks failed\n"
+                                        f"**{len(failed_members)}/{ctx.guild.member_count}** "
+                                        f"members failed checks")
+
+        embed.insert_field_at(0, name="Statistics",
+                              value=f"**{ctx.guild.member_count}** members\n"
+                                    f"**{len(ctx.guild.roles)}** roles\n"
+                                    f"**{len(ctx.guild.emojis)}/{ctx.guild.emoji_limit}** emojis")
+        embed.set_footer(text="Use `/check member member: <member>` to check an individual member!",
+                         icon_url=ctx.guild.me.avatar_url)
+        await ctx.send(embed=embed)
 
     @staticmethod
     def ratelimit_check(cooldown, message):
@@ -205,29 +277,32 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         for channel in channels:
             if not utils.can_bot_respond(self.bot, channel):
                 continue
-            
+
             await channel.send(f"Hey, {member.mention}, you have a blank or hard-readable username!"
-                            f"Please change it so it has at least {self.blank_threshold} "
-                            f"letters, numbers or some meaningful symbols. Thank you (*^_^)／")
-            return # No need to send few notification, if there is a few home channels
+                               f"Please change it so it has at least {self.blank_threshold} "
+                               f"letters, numbers or some meaningful symbols. Thank you (*^_^)／")
+            return  # No need to send few notification, if there is a few home channels
 
     def check_fresh_account(self, member: discord.Member):
-        return self._check_recent(member.created_at, " old")
+        return self._check_recent(member.created_at, "Account is {} old")
 
     def check_recently_joined(self, member: discord.Member):
-        return self._check_recent(member.joined_at or datetime.datetime.utcnow(), " ago")
+        return self._check_recent(member.joined_at or datetime.datetime.utcnow(), "Joined {} ago")
 
-    def _check_recent(self, time, extra=""):  # true = ok
+    def _check_recent(self, time, format_string="{}"):  # true = ok
         now = datetime.datetime.utcnow()
         delta = relativedelta.relativedelta(now, time)
         abs_delta = now - time
-        return abs_delta >= self.recent_join, utils.display_delta(delta) + extra
+        return abs_delta >= self.recent_join, format_string.format(utils.display_delta(delta))
 
     def check_immidiate_join(self, member):
         delta = relativedelta.relativedelta(member.joined_at, member.created_at)
         abs_delta = member.joined_at - member.created_at
         result = abs_delta >= self.immediatly_join or (None if self.check_recently_joined(member)[0] else False)
         return result, utils.display_delta(delta) + " between registration and joining"
+
+    def check_member_spam(self, member):
+        pass
 
 
 def setup(bot):
