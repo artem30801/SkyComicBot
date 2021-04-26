@@ -79,7 +79,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
     def update_options(self):
         choices = [create_choice(name=check.capitalize(), value=check) for check in self.checks.keys()]
         choices = [create_choice(name="All", value="all")] + choices + \
-                  [create_choice(name="None (stats and ifo only)", value="none")]
+                  [create_choice(name="None (stats and info only)", value="none")]
 
         self.check_member.options[1]["choices"] = choices
         self.check_server.options[0]["choices"] = choices
@@ -189,7 +189,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         embed.colour = self.get_check_color(failed_count, len(to_check))
         embed.title = "User check results"
         if to_check:
-            embed.description = f"**{failed_count}/{len(to_check)}** checks failed"
+            embed.description = f"**{failed_count}/{len(to_check)}** checks failed" if failed_count > 0 else "All checks passed!"
 
         embed.insert_field_at(0, name="User info",
                               value=f"*Mention:* {member.mention} "
@@ -243,10 +243,12 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         embed.title = "Server check results"
         # embed.description =
         if to_check:
-            embed.insert_field_at(0, name="Summary",
-                                  value=f"**{total_failed}/{len(to_check)}** checks failed\n"
-                                        f"**{len(failed_members)}/{ctx.guild.member_count}** "
-                                        f"members failed checks")
+            if total_failed > 0:
+                value = f"**{total_failed}/{len(to_check)}** checks failed\n" +\
+                        f"**{len(failed_members)}/{ctx.guild.member_count}** members failed checks"
+            else:
+                value = "All checks passed!"
+            embed.insert_field_at(0, name="Summary", value=value)
 
         embed.insert_field_at(0, name="Statistics",
                               value=f"**{ctx.guild.member_count}** members\n"
