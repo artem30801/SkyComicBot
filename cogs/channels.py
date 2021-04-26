@@ -64,6 +64,8 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
         existing_home_channels = await HomeChannels.all()
         for channel in existing_home_channels:
             logger.db(f"Converting home channel in guild with id '{channel.guild_id}' to channel setup")
+            if not channel.channel_id:
+                continue
             await ChannelSetup.create(guild_id=channel.guild_id, channel_id=channel.channel_id, channel_type=ChannelType.HOME.value[0])
             await channel.delete()
 
