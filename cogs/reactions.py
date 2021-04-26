@@ -39,10 +39,10 @@ class Reactions(commands.Cog):
             return
 
         if message.guild and message.channel:
-            if await self.bot.get_cog("Channels").is_no_reactions_channel(message.channel):
+            if self.bot.get_cog("Channels").is_no_reactions_channel(message.channel):
                 return
 
-            if await self.bot.get_cog("Channels").is_update_monitor_channel(message.channel):
+            if self.bot.get_cog("Channels").is_update_monitor_channel(message.channel):
                 await self.notify_update(message)
 
         for keys, react in self._reactions.items():

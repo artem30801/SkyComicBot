@@ -5,6 +5,7 @@ import pickle
 import platform
 import socket
 
+
 def set_keepalive(sock, after_idle_sec=1, interval_sec=3, max_fails=5):
     """
     Sets `keepalive` parameters of given socket.
