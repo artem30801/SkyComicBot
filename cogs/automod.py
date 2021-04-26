@@ -140,7 +140,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
     def get_check_color(failed_count, total, intolerance=1):
         red = Color("#e74c3c")  # red
         colors = list(Color("#2ecc71").range_to(red, max(total - intolerance, 2)))
-        colors += [red] * intolerance
+        colors += [red] * (intolerance + 1)
 
         return db_utils.convert_color(colors[failed_count].hex_l)
 
@@ -199,7 +199,6 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                                     f"*Roles:* {', '.join([role.mention for role in member.roles[1:]]) or 'None'}",
                               inline=False)
         return embed
-
 
     @cog_ext.cog_subcommand(base="check", name="server",
                             options=[
