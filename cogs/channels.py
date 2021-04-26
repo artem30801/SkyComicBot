@@ -100,7 +100,7 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
             channel = self.bot.get_channel(channel_setup.channel_id)
             if channel is None:
                 await self.delete_notfound(channel_setup)
-            elif utils.can_bot_respond(guild.me, channel):
+            elif utils.can_bot_respond(channel.guild.me, channel):
                 channels.append(channel)
             else:
                 logger.info(f"Bot can't send messages to #{channel.name} channel at {channel.guild.name}!")
