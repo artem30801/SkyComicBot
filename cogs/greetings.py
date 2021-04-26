@@ -45,14 +45,6 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
         self._started_at = datetime.utcnow()
         self.update_activity_time_loop.start()
 
-        # check home channels
-        for guild in self.bot.guilds:
-            channels = await self.bot.get_cog("Channels").get_home_channels(guild)
-            for channel in channels:
-                if not utils.can_bot_respond(self.bot, channel) and channel is not None:
-                    logger.warning(f"Bot can't send messages to home channel #{channel.name} at '{guild.name}'")
-                    continue
-
         # Don't send greetings if last activity was less than a 3 hours ago
         if last_activity is None or (self._last_active_at - last_activity > timedelta(hours=3)):
             await self.send_home_channels_message("Hello hello! I'm back online and ready to work!")
@@ -140,11 +132,8 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
             if channel.guild not in self.bot.guilds:
                 continue
 
-            if utils.can_bot_respond(self.bot, channel):
-                file = discord.File(io.BytesIO(attachment), attachment_name) if attachment is not None else None
-                await channel.send(message, file=file)
-            elif channel:
-                logger.warning(f"Bot can't send messages to home channel #{channel.name} at '{channel.guild.name}'")
+            file = discord.File(io.BytesIO(attachment), attachment_name) if attachment is not None else None
+            await channel.send(message, file=file)
 
     def get_greeting(self, member):
         greetings = \

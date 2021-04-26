@@ -334,9 +334,6 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
 
         channels = await self.bot.get_cog("Channels").get_home_channels(member.guild)
         for channel in channels:
-            if not utils.can_bot_respond(self.bot, channel):
-                continue
-
             await channel.send(f"Hey, {member.mention}, you have a blank or hard-readable username!\n"
                                f"Please change it so it has at least {self.blank_threshold + 1} "
                                f"letters, numbers or some meaningful symbols.\n Thank you (*^_^)／")

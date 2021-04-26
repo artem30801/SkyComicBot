@@ -88,13 +88,6 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
                                   )
         logger.warning(f"Deleted channel setup from {stack or '(deleted guild)'} as channel was deleted")
 
-    async def _get_channel(self, channel_setup: ChannelSetup):
-        channel = self.bot.get_channel(channel_setup.channel_id)
-        if channel is None:
-            await self.delete_notfound(channel_setup)
-        else:
-            return channel
-
     async def get_channels(self, guild: discord.Guild = None, channel_type: int = None) -> [discord.TextChannel]:
         setups = ChannelSetup.all()
         if channel_type is not None:
@@ -104,7 +97,13 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
 
         channels = []
         async for channel_setup in setups:
-            channels.append(await self._get_channel(channel_setup))
+            channel = self.bot.get_channel(channel_setup.channel_id)
+            if channel is None:
+                await self.delete_notfound(channel_setup)
+            elif utils.can_bot_respond(guild.me, channel):
+                channels.append(channel)
+            else:
+                logger.info(f"Bot can't send messages to #{channel.name} channel at {channel.guild.name}!")
         return channels
 
     async def get_home_channels(self, guild: discord.Guild = None) -> [discord.TextChannel]:
