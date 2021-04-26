@@ -147,7 +147,8 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             embed.description = f"*{failed_count}/{len(to_check)}* checks failed"
 
         embed.insert_field_at(0, name="User info",
-                              value=f"*Mention:* {member.mention}\n"
+                              value=f"*Mention:* {member.mention} "
+                                    f"[*mobile link*](https://discordapp.com/users/{member.id}/)\n"
                                     f"*Name:* {member}\n"
                                     f"*ID:* {member.id}\n"
                                     f"*Roles:* {', '.join([role.mention for role in member.roles[1:]]) or 'None'}",
@@ -178,7 +179,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             failed = []
             for member in ctx.guild.members:
                 if self.checks[check](member)[0] is False:
-                    mention = f"- {member.mention} ({member})"
+                    mention = f"- {member.mention} {member} [*mobile link*](https://discordapp.com/users/{member.id}/)"
                     failed.append(mention)
                     failed_members.add(member)
 
