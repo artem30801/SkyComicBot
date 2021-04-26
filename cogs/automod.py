@@ -6,6 +6,7 @@ from discord.ext import commands
 from discord_slash import cog_ext, SlashContext
 from discord_slash.utils.manage_commands import create_option, create_choice
 
+import collections
 import unicodedata
 import datetime
 from datetime import timedelta
@@ -39,6 +40,10 @@ def bool_to_emoji(value):
     return "✅" if value else "❌"
 
 
+FakeAuthorMessage = collections.namedtuple("FakeAuthorMessage", ["author"])
+FakeGuildMessage = collections.namedtuple("FakeGuildMessage", ["guild"])
+
+
 class AutoMod(utils.AutoLogCog, utils.StartupCog):
     def __init__(self, bot):
         utils.AutoLogCog.__init__(self, logger)
@@ -48,7 +53,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
 
         self.blank_threshold = 2
         self.recent_join = timedelta(days=3)
-        self.immediatly_join = timedelta(minutes=30)
+        self.immediatly_join = timedelta(minutes=60)
 
         self.rate = 10  # times
         self.per = 30  # per seconds
@@ -58,6 +63,11 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             1, 10, commands.BucketType.channel)
         self._spam_report_cooldown = commands.CooldownMapping.from_cooldown(
             1, 5 * 60, commands.BucketType.guild)
+
+        self._join_cooldown = commands.CooldownMapping.from_cooldown(
+            1, 60 * 60, commands.BucketType.user)
+        self._join_report_cooldown = commands.CooldownMapping.from_cooldown(
+            1, 15 * 60, commands.BucketType.guild)
 
         self.checks = {"blank nick": self.check_nick_blank,
                        "fresh account": self.check_fresh_account,
@@ -74,6 +84,12 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         self.check_member.options[1]["choices"] = choices
         self.check_server.options[0]["choices"] = choices
 
+    async def send_mod_log(self, guild, content="", **kwargs):
+        channels = await self.bot.get_cog("Channels").get_mod_log_channels(guild)
+        for channel in channels:
+            await channel.send(content, **kwargs)
+            # break
+
     @commands.Cog.listener()
     async def on_message(self, message):
         if message.author == message.guild.me:
@@ -81,11 +97,37 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
 
         await self.check_spam(message)
 
-    # @commands.Cog.listener()
-    # async def on_member_join(self, member):
-    #     blank = self.check_nick_blank(member)[0]
-    #     if not blank:
-    #         await self.notify_nick_blank(member)
+    @commands.Cog.listener()
+    async def on_member_join(self, member):
+        fake_msg = FakeAuthorMessage(member)
+        join_after = self.ratelimit_check(self._join_cooldown, fake_msg)
+        if join_after is None:
+            to_check = ["blank nick", "fresh account", "immediately joined"]
+            embed = self.get_member_check_embed(member, to_check)
+            embed.title = "New member joined! Check results"
+            await self.send_mod_log(member.guild, embed=embed)
+
+            blank = self.check_nick_blank(member)[0]
+            if not blank:
+                await self.notify_nick_blank(member)
+        else:
+            await self.report_join_spam(member)
+
+    async def report_join_spam(self, member):
+        fake_msg = FakeGuildMessage(member.guild)
+        report_after = self.ratelimit_check(self._join_report_cooldown, fake_msg)
+        if report_after is not None:
+            return
+
+        embed = discord.Embed()
+        embed.set_author(name=member.name, icon_url=member.avatar_url)
+        embed.title = ":warning: Warning! Join spam!"
+        embed.description = f"{member.mention} {member} (ID {member.id}) " \
+                            f"[*mobile link*](https://discordapp.com/users/{member.id}/)\n" \
+                            f"Joined more than 1 time in 60 minutes span."
+        embed.colour = discord.Colour.red()
+
+        await self.send_mod_log(member.guild, embed=embed)
 
     def get_to_check(self, check):
         if check == "none":
@@ -96,35 +138,13 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
 
     @staticmethod
     def get_check_color(failed_count, total, intolerance=1):
-        red = Color("red")
-        colors = list(Color("green").range_to(red, max(total - intolerance, 2)))
+        red = Color("#e74c3c")  # red
+        colors = list(Color("#2ecc71").range_to(red, max(total - intolerance, 2)))
         colors += [red] * intolerance
 
         return db_utils.convert_color(colors[failed_count].hex_l)
 
-    @cog_ext.cog_subcommand(base="check", name="member",
-                            options=[
-                                create_option(
-                                    name="member",
-                                    description="Member to perform check on (or all members)",
-                                    option_type=discord.Member,
-                                    required=True,
-                                ),
-                                create_option(
-                                    name="check",
-                                    description="Check to perform",
-                                    option_type=str,
-                                    required=False,
-                                    choices=[]
-                                ),
-                            ],
-                            guild_ids=guild_ids)
-    @has_server_perms()
-    async def check_member(self, ctx: SlashContext, member: discord.Member, check="all"):
-        """Performs specified (or all) security checks on given (or all) members"""
-        await ctx.defer(hidden=False)
-        to_check = self.get_to_check(check)
-
+    def get_member_check_embed(self, member, to_check):
         embed = discord.Embed()
         embed.set_author(name=member.name, icon_url=member.avatar_url)
 
@@ -153,7 +173,31 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                                     f"*ID:* {member.id}\n"
                                     f"*Roles:* {', '.join([role.mention for role in member.roles[1:]]) or 'None'}",
                               inline=False)
+        return embed
 
+    @cog_ext.cog_subcommand(base="check", name="member",
+                            options=[
+                                create_option(
+                                    name="member",
+                                    description="Member to perform check on (or all members)",
+                                    option_type=discord.Member,
+                                    required=True,
+                                ),
+                                create_option(
+                                    name="check",
+                                    description="Check to perform",
+                                    option_type=str,
+                                    required=False,
+                                    choices=[]
+                                ),
+                            ],
+                            guild_ids=guild_ids)
+    @has_server_perms()
+    async def check_member(self, ctx: SlashContext, member: discord.Member, check="all"):
+        """Performs specified (or all) security checks on given member"""
+        await ctx.defer(hidden=False)
+        to_check = self.get_to_check(check)
+        embed = self.get_member_check_embed(member, to_check)
         await ctx.send(embed=embed)
 
     @cog_ext.cog_subcommand(base="check", name="server",
@@ -168,6 +212,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                             ],
                             guild_ids=guild_ids)
     async def check_server(self, ctx: SlashContext, check="all"):
+        """Performs specified (or all) security checks on all members of the servers"""
         await ctx.defer(hidden=False)
         to_check = self.get_to_check(check)
 
@@ -241,8 +286,8 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         deleted = None
 
         if report_after is None:
-            logger.important(f"Detected spam by {self.format_caller(message)}!")
             deleted = await self._purge(message)
+            await self.report_spam(message, deleted)
         else:
             if commands.has_permissions(manage_messages=True):
                 try:
@@ -266,7 +311,20 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             await asyncio.sleep(self.per + 1)
             await self._purge(message)
 
-        # todo send to moderation log channel
+    async def report_spam(self, message, deleted=()):
+        logger.important(f"Detected spam by {self.format_caller(message)}!")
+
+        member = message.author
+        embed = discord.Embed()
+        embed.set_author(name=member.name, icon_url=member.avatar_url)
+        embed.title = ":warning: Warning! Message spam!"
+        embed.description = f"{member.mention} {member} (ID {member.id}) " \
+                            f"[*mobile link*](https://discordapp.com/users/{member.id}/)\n" \
+                            f"Sending messages faster than {self.rate} messages per {self.per} seconds\n" \
+                            f"Deleted **{len(deleted)}** messages automatically.\n"
+
+        embed.colour = discord.Colour.red()
+        await self.send_mod_log(member.guild, embed=embed)
 
     def check_nick_blank(self, member):
         return check_blank(member.display_name, self.blank_threshold), None
@@ -279,9 +337,9 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             if not utils.can_bot_respond(self.bot, channel):
                 continue
 
-            await channel.send(f"Hey, {member.mention}, you have a blank or hard-readable username!"
-                               f"Please change it so it has at least {self.blank_threshold} "
-                               f"letters, numbers or some meaningful symbols. Thank you (*^_^)／")
+            await channel.send(f"Hey, {member.mention}, you have a blank or hard-readable username!\n"
+                               f"Please change it so it has at least {self.blank_threshold + 1} "
+                               f"letters, numbers or some meaningful symbols.\n Thank you (*^_^)／")
             return  # No need to send few notification, if there is a few home channels
 
     def check_fresh_account(self, member: discord.Member):
