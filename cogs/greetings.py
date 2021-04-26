@@ -135,14 +135,13 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
             await ctx.send("I'm homeless T_T", hidden=True)
 
     async def send_home_channels_message(self, message: str, attachment=None, attachment_name=""):
-        for guild in self.bot.guilds:
-            channels = await self.bot.get_cog("Channels").get_home_channels(guild)
-            for channel in channels:
-                if utils.can_bot_respond(self.bot, channel):
-                    file = discord.File(io.BytesIO(attachment), attachment_name) if attachment is not None else None
-                    await channel.send(message, file=file)
-                elif channel:
-                    logger.warning(f"Bot can't send messages to home channel #{channel.name} at '{guild.name}'")
+        channels = await self.bot.get_cog("Channels").get_home_channels()
+        for channel in channels:
+            if utils.can_bot_respond(self.bot, channel):
+                file = discord.File(io.BytesIO(attachment), attachment_name) if attachment is not None else None
+                await channel.send(message, file=file)
+            elif channel:
+                logger.warning(f"Bot can't send messages to home channel #{channel.name} at '{channel.guild.name}'")
 
     def get_greeting(self, member):
         greetings = \

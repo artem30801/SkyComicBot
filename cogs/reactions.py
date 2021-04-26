@@ -41,23 +41,26 @@ class Reactions(commands.Cog):
         if message.guild and message.channel:
             if await self.bot.get_cog("Channels").is_no_reactions_channel(message.channel):
                 return
-            
+
             if await self.bot.get_cog("Channels").is_update_monitor_channel(message.channel):
-                logger.info("Reacted on update")
-                try:
-                    role = await commands.RoleConverter().convert(message, utils.update_crew_role)
-                except RoleNotFound:
-                    role = None
-                notify_message = self.get_update_message(role.mention if role else "Folks", message.channel.mention)
-                notify_channels = await self.bot.get_cog("Channels").get_update_notify_channels(message.guild)
-                for channel in notify_channels:
-                    await channel.send(notify_message)
+                await self.notify_update(message)
 
         for keys, react in self._reactions.items():
             if any(contains_word(message.content, key) for key in keys):
                 logger.debug(f"Reacted to {message.content} message (contains {keys})")
                 await react(message)
                 break
+
+    async def notify_update(self, message):
+        logger.info("Reacted on update")
+        try:
+            role = discord.utils.get(message.guild.roles, name=utils.update_crew_role)
+        except RoleNotFound:
+            role = None
+        notify_message = self.get_update_message(role.mention if role else "Folks", message.channel.mention)
+        notify_channels = await self.bot.get_cog("Channels").get_update_notify_channels(message.guild)
+        for channel in notify_channels:
+            await channel.send(notify_message)
 
     async def telling(self, message):
         await send_file(message.channel, abs_join(self.bot.current_dir, "reactions", "telling.gif"),
