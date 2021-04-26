@@ -106,7 +106,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                             options=[
                                 create_option(
                                     name="member",
-                                    description="Member to perform check on (or all members)",
+                                    description="Member to perform check on",
                                     option_type=discord.Member,
                                     required=True,
                                 ),
@@ -121,7 +121,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                             guild_ids=guild_ids)
     @has_server_perms()
     async def check_member(self, ctx: SlashContext, member: discord.Member, check="all"):
-        """Performs specified (or all) security checks on given (or all) members"""
+        """Performs specified (or all) security checks on given member"""
         await ctx.defer(hidden=False)
         to_check = self.get_to_check(check)
 
@@ -137,14 +137,14 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                 failed_count += 1
 
             embed.add_field(name=check.capitalize(),
-                            value=f"{bool_to_emoji(result[0])} __{'Failed' if is_failed else 'Passed'}__"
+                            value=f"{bool_to_emoji(result[0])} {'Failed' if is_failed else 'Passed'}"
                                   f"{addition}",
                             inline=False)
 
         embed.colour = self.get_check_color(failed_count, len(to_check))
         embed.title = "User check results"
         if to_check:
-            embed.description = f"*{failed_count}/{len(to_check)}* checks failed"
+            embed.description = f"**{failed_count}/{len(to_check)}** checks failed"
 
         embed.insert_field_at(0, name="User info",
                               value=f"*Mention:* {member.mention} "
@@ -160,7 +160,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                             options=[
                                 create_option(
                                     name="check",
-                                    description="Check to perform",
+                                    description="Check to perform (all by default)",
                                     option_type=str,
                                     required=False,
                                     choices=[]
@@ -168,6 +168,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                             ],
                             guild_ids=guild_ids)
     async def check_server(self, ctx: SlashContext, check="all"):
+        """Runs selected checks on all members of the server, shows server statistics"""
         await ctx.defer(hidden=False)
         to_check = self.get_to_check(check)
 

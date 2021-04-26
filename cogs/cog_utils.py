@@ -2,7 +2,7 @@ import logging
 import os
 
 import discord
-from discord import Guild, TextChannel, Member, Role
+from discord import TextChannel, Member, Role
 from discord.ext import commands
 from discord.ext.commands import Bot
 from discord_slash import SlashContext
@@ -156,6 +156,6 @@ def display_delta(delta):
         "day": delta.days,
         "hour": delta.hours,
         "minute": delta.minutes,
-        "second": delta.seconds,
     }
-    return ", ".join([f"{value} {key + 's' if value > 1 else key}" for key, value in d.items() if value > 0])
+    result = ", ".join([f"{value} {key + 's' if value > 1 else key}" for key, value in d.items() if value > 0])
+    return result or "less than a minute"
