@@ -191,12 +191,15 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
         embed.title = "Bot check results"
         embed.set_author(name=self.bot.user.name, icon_url=self.bot.user.avatar_url)
 
-        git_hash = (await utils.run('git describe --always'))[0] or 'Not available'
-        commits_behind = (await utils.run('git rev-list HEAD...origin/master --count'))[0] or 'Not available'
+        no = "Not available"
+        git_hash = (await utils.run(f"(cd {self.bot.current_dir}; git describe --always)"))[0] or no
+        commits_behind = (await utils.run(f"(cd {self.bot.current_dir}; git rev-list HEAD...origin/master --count)"))[0]
+        commits_behind = commits_behind.strip()
+        commits_behind = int(commits_behind) or "Up to date" if commits_behind else no
         embed.add_field(name="Version",
                         value=f"*Version number:* {self.bot.version}\n"
                               f"*Commit hash:* {git_hash.strip()}\n"
-                              f"*Commits behind:* {int(commits_behind.strip()) or 'None'}"
+                              f"*Commits behind:* {commits_behind}"
                         )
 
         embed.add_field(name="Statistics",

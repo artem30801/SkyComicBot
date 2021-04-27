@@ -49,7 +49,7 @@ class Service(utils.AutoLogCog, utils.StartupCog):
     @commands.is_owner()
     async def update(self, ctx: SlashContext):
         await ctx.defer()
-        output, error = await utils.run("git pull")
+        output, error = await utils.run(f"(cd {self.bot.current_dir}; git pull)")
 
         result = ""
         if output:
@@ -67,7 +67,7 @@ class Service(utils.AutoLogCog, utils.StartupCog):
     async def restart(self, ctx: SlashContext):
         await ctx.send(":warning: **Restarting the bot!** :warning:")
         await self.bot.close()
-        await utils.run("systemctl --user restart skycomicbot.service")
+        await utils.run(f"systemctl --user restart skycomicbot.service")
 
 
 def setup(bot):

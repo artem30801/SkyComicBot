@@ -109,7 +109,7 @@ async def run(cmd):
         stderr=asyncio.subprocess.PIPE)
 
     stdout, stderr = await proc.communicate()
-    return stdout.decode('ascii'), stderr.decode('ascii')
+    return stdout.decode('ascii', errors="backslashreplace"), stderr.decode("ascii", errors="backslashreplace")
 
 
 def format_params(params):
