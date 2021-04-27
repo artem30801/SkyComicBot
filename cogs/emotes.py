@@ -140,7 +140,7 @@ class Emotes(utils.AutoLogCog, utils.StartupCog):
 
         async with aiohttp.ClientSession() as session:
             async with session.get(attachment_link) as response:
-                if response.status == 200:
+                if response.ok:
                     attachment = await response.read()
 
         with open(abs_join(self.bot.current_dir, "emotes", filename), 'wb') as f:
