@@ -12,13 +12,20 @@ import discord
 from dateutil import relativedelta
 from discord.ext import tasks
 from discord_slash import cog_ext, SlashContext
-from discord_slash.utils.manage_commands import create_option
+from discord_slash.utils.manage_commands import create_option, create_choice
 
 import cogs.cog_utils as utils
 from cogs.cog_utils import guild_ids, display_delta
 from cogs.permissions import has_server_perms, has_bot_perms
 
 logger = logging.getLogger(__name__)
+
+activities = {
+    "YouTube Together": "755600276941176913",
+    "Poker Night": "755827207812677713",
+    "Betrayal.io": "773336526917861400",
+    "Fishington.io": "814288819477020702"
+}
 
 
 class Greetings(utils.AutoLogCog, utils.StartupCog):
@@ -105,7 +112,7 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
         if attachment_link is not None:
             async with aiohttp.ClientSession() as session:
                 async with session.get(attachment_link) as response:
-                    if response.status == 200:
+                    if response.ok:
                         file = await response.read()
                         name = Path(urlparse(attachment_link).path).name
 
@@ -186,6 +193,68 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
     async def latency(self, ctx: SlashContext):
         """Shows latency between bot and Discord servers. Use to check if there are network problems."""
         await ctx.send(f"Current latency: {math.ceil(self.bot.latency * 100)} ms")
+
+    async def get_activity__code(self, voice, application_id):
+        url = f"https://discord.com/api/v8/channels/{voice.channel.id}/invites"
+        api_json = {
+            "max_age": 86400,
+            "max_uses": 0,
+            "target_application_id": f"{application_id}",
+            "target_type": 2,
+            "temporary": False,
+            "validate": None
+        }
+        headers = {"Authorization": f"Bot {self.bot.token}",
+                   "Content-Type": "application/json"
+                   }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=api_json, headers=headers) as response:
+                data = await response.json()
+                code = data["code"]
+                return code
+
+    @staticmethod
+    async def get_application_icon(application_id):
+        async with aiohttp.ClientSession() as session:
+            api_url = f"https://discord.com/api/v9/applications/{application_id}/rpc"
+            async with session.get(api_url) as response:
+                data = await response.json()
+                icon_code = data["icon"]
+
+            icon_url = f"https://cdn.discordapp.com/app-icons/{application_id}/{icon_code}.png"
+            return icon_url
+
+    @cog_ext.cog_slash(name="activity",
+                       options=[create_option(
+                           name="type",
+                           description="Type of activity",
+                           option_type=str,
+                           required=True,
+                           choices=[create_choice(name=name, value=name) for name in activities.keys()]
+                       )],
+                       connector={"type": "activity_type"},
+                       guild_ids=guild_ids)
+    async def start_activity(self, ctx: SlashContext, activity_type):
+        """Creates an activity invite for voice channel you are in"""
+        if not ctx.author.voice:
+            await ctx.send(hidden=True, content="You need to be in a voice channel to start an activity!")
+            return
+
+        await ctx.defer()
+        voice = ctx.author.voice
+        application_id = activities[activity_type]
+        code = await self.get_activity__code(voice, application_id)
+        invite = f"https://discord.gg/{code}"
+        icon = await self.get_application_icon(application_id)
+
+        embed = discord.Embed(title="New voice channel activity started!", colour=utils.embed_color)
+        embed.set_author(name=activity_type, icon_url=icon, url=invite)
+        embed.set_thumbnail(url=icon)
+        embed.description = f"**{activity_type}** activity just started in {voice.channel.mention}\n" \
+                            f"[Click this link and join!]({invite})"
+
+        await ctx.send(embed=embed)
 
 
 def setup(bot):

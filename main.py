@@ -25,6 +25,8 @@ class SkyComicBot(commands.Bot):
         super().__init__(**kwargs)
         SlashCommand(self, override_type=True)
         self.current_dir = os.path.dirname(os.path.realpath(__file__))
+        self.token = None
+
         self.config = {}
         self.load_config("config.json")
 
@@ -37,9 +39,10 @@ class SkyComicBot(commands.Bot):
 
         self.owner_ids = set(self.config["discord"]["owner_ids"])
         utils.guild_ids = self.config["discord"]["guild_ids"]
+        self.token = self.config["auth"]["discord_token"]
 
     async def start(self):
-        await super().start(self.config["auth"]["discord_token"])
+        await super().start(self.token)
 
 
 async def main():
