@@ -181,18 +181,41 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
         member = member or ctx.author
         await ctx.send(self.get_greeting(member))
 
-    @cog_ext.cog_slash(guild_ids=guild_ids)
-    async def uptime(self, ctx: SlashContext):
-        """Shows how long the bot was running for."""
+    @cog_ext.cog_subcommand(base="check", name="bot", guild_ids=guild_ids)
+    @has_bot_perms()
+    async def bot_info(self, ctx: SlashContext):
+        """Shows bot information, statistics and status"""
         now = datetime.utcnow()
         delta = relativedelta.relativedelta(now, self._started_at)
-        await ctx.send(f"I was up and running since {self._started_at.strftime('%d/%m/%Y, %H:%M:%S')} (GMT) "
-                       f"for {display_delta(delta)}")
+        embed = discord.Embed(colour=utils.embed_color)
+        embed.title = "Bot check results"
+        embed.set_author(name=self.bot.user.name, icon_url=self.bot.user.avatar_url)
 
-    @cog_ext.cog_slash(guild_ids=guild_ids)
-    async def latency(self, ctx: SlashContext):
-        """Shows latency between bot and Discord servers. Use to check if there are network problems."""
-        await ctx.send(f"Current latency: {math.ceil(self.bot.latency * 100)} ms")
+        git_hash = (await utils.run('git describe --always'))[0] or 'Not available'
+        commits_behind = (await utils.run('git rev-list HEAD...origin/master --count'))[0] or 'Not available'
+        embed.add_field(name="Version",
+                        value=f"*Version number:* {self.bot.version}\n"
+                              f"*Commit hash:* {git_hash.strip()}\n"
+                              f"*Commits behind:* {int(commits_behind.strip()) or 'None'}"
+                        )
+
+        embed.add_field(name="Statistics",
+                        value=f"*Latency:* {math.ceil(self.bot.latency * 100)} ms\n"
+                              f"*Servers:* {len(self.bot.guilds)}\n"
+                              f"*Users:* {len(self.bot.users)}"
+                        )
+
+        embed.add_field(name="Running",
+                        value=f"*Since*: {self._started_at.strftime('%d/%m/%Y, %H:%M:%S')} (GMT)\n"
+                              f"*For:* {display_delta(delta)}\n"
+                              f"*Last activity check*: {self._last_active_at.strftime('%d/%m/%Y, %H:%M:%S')} (GMT)",
+                        inline=False
+                        )
+
+        cogs = '\n'.join(self.bot.cogs.keys())
+        embed.add_field(name=f"Loaded cogs ({len(self.bot.cogs.keys())} total)", value=cogs)
+
+        await ctx.send(embed=embed)
 
     async def get_activity__code(self, voice, application_id):
         url = f"https://discord.com/api/v8/channels/{voice.channel.id}/invites"

@@ -15,6 +15,8 @@ from cogs.logging_utils import BufferingSocketHandler
 
 # from cogs.comics import Comics
 
+version = "3.5.0"  # bump this with update releases
+
 nest_asyncio.apply()
 
 
@@ -24,6 +26,7 @@ class SkyComicBot(commands.Bot):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         SlashCommand(self, override_type=True)
+        self.version = version
         self.current_dir = os.path.dirname(os.path.realpath(__file__))
         self.token = None
 
