@@ -69,6 +69,14 @@ class Service(utils.AutoLogCog, utils.StartupCog):
         await self.bot.close()
         await utils.run(f"systemctl --user restart skycomicbot.service")
 
+    @cog_ext.cog_subcommand(base="bot", name="shutdown", guild_ids=guild_ids)
+    @has_bot_perms()
+    async def shutdown(self, ctx: SlashContext):
+        await ctx.send(":warning: **Shutting down the bot!** :warning:")
+        await self.bot.close()
+        # It shouldn't be running after "close" but juuust in case add this
+        await utils.run("systemctl --user stop skycomicbot.service")
+
 
 def setup(bot):
     bot.add_cog(Service(bot))
