@@ -1,11 +1,13 @@
 import logging
 import os
 
+import asyncio
 import discord
 from discord import TextChannel, Member, Role
 from discord.ext import commands
-from discord.ext.commands import Bot
+
 from discord_slash import SlashContext
+
 from fuzzywuzzy import fuzz
 from fuzzywuzzy import process
 
@@ -98,6 +100,16 @@ class DBLogger(logging.getLoggerClass()):
     def important(self, msg, *args, **kwargs):
         if self.isEnabledFor(important_log_level):
             self._log(important_log_level, msg, args, **kwargs)
+
+
+async def run(cmd):
+    proc = await asyncio.create_subprocess_shell(
+        cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE)
+
+    stdout, stderr = await proc.communicate()
+    return stdout.decode('ascii'), stderr.decode('ascii')
 
 
 def format_params(params):

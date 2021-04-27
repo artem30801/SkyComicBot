@@ -6,6 +6,7 @@ from discord_slash import cog_ext, SlashContext
 from discord_slash.utils.manage_commands import create_option, create_choice
 
 import cogs.cog_utils as utils
+from cogs.cog_utils import guild_ids
 from cogs.permissions import has_server_perms, has_bot_perms
 
 
@@ -43,6 +44,30 @@ class Service(utils.AutoLogCog, utils.StartupCog):
                                           "(https://blog.discord.com/slash-commands-are-here-8db0a385d9e6)",
                               )
         await ctx.send(embed=embed)
+
+    @cog_ext.cog_subcommand(base="bot", name="update", guild_ids=guild_ids)
+    @commands.is_owner()
+    async def update(self, ctx: SlashContext):
+        await ctx.defer()
+        output, error = await utils.run("git pull")
+
+        result = ""
+        if output:
+            result += f"*Output:* {output.strip()}\n"
+        if error:
+            result += f"*Errors:* {error.strip()}"
+
+        await ctx.send(f"**Pulled updates from git** \n {result or 'No output'}")
+
+        if output.strip() != "Already up to date.":
+            await self.restart.invoke(ctx)
+
+    @cog_ext.cog_subcommand(base="bot", name="restart", guild_ids=guild_ids)
+    @commands.is_owner()
+    async def restart(self, ctx: SlashContext):
+        await ctx.send(":warning: **Restarting the bot!** :warning:")
+        await self.bot.close()
+        await utils.run("systemctl --user restart skycomicbot.service")
 
 
 def setup(bot):
