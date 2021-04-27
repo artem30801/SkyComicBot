@@ -193,7 +193,8 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
 
         no = "Not available"
         git_hash = (await utils.run(f"(cd {self.bot.current_dir}; git describe --always)"))[0] or no
-        commits_behind = (await utils.run(f"(cd {self.bot.current_dir}; git rev-list HEAD...origin/master --count)"))[0]
+        commits_behind = (await utils.run(f"(cd {self.bot.current_dir}; git fetch; "
+                                          f"git rev-list HEAD...origin/master --count)"))[0]
         commits_behind = commits_behind.strip()
         commits_behind = int(commits_behind) or "Up to date" if commits_behind else no
         embed.add_field(name="Version",
