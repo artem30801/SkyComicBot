@@ -46,7 +46,7 @@ class Service(utils.AutoLogCog, utils.StartupCog):
         await ctx.send(embed=embed)
 
     @cog_ext.cog_subcommand(base="bot", name="update", guild_ids=guild_ids)
-    @commands.is_owner()
+    @has_bot_perms()
     async def update(self, ctx: SlashContext):
         await ctx.defer()
         output, error = await utils.run(f"(cd {self.bot.current_dir}; git pull)")
@@ -63,7 +63,7 @@ class Service(utils.AutoLogCog, utils.StartupCog):
             await self.restart.invoke(ctx)
 
     @cog_ext.cog_subcommand(base="bot", name="restart", guild_ids=guild_ids)
-    @commands.is_owner()
+    @has_bot_perms()
     async def restart(self, ctx: SlashContext):
         await ctx.send(":warning: **Restarting the bot!** :warning:")
         await self.bot.close()
