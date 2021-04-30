@@ -15,7 +15,7 @@ from cogs.logging_utils import BufferingSocketHandler
 
 # from cogs.comics import Comics
 
-version = "3.6.3"  # bump this with update releases
+version = "3.6.4"  # bump this with update releases
 
 nest_asyncio.apply()
 

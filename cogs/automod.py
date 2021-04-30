@@ -65,7 +65,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             1, 5 * 60, commands.BucketType.guild)
 
         self._join_cooldown = commands.CooldownMapping.from_cooldown(
-            1, 60 * 60, commands.BucketType.user)
+            2, 60 * 60, commands.BucketType.user)
         self._join_report_cooldown = commands.CooldownMapping.from_cooldown(
             1, 15 * 60, commands.BucketType.guild)
 
@@ -101,17 +101,32 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
     async def on_member_join(self, member):
         fake_msg = FakeAuthorMessage(member)
         join_after = self.ratelimit_check(self._join_cooldown, fake_msg)
-        if join_after is None:
-            to_check = ["blank nick", "fresh account", "immediately joined"]
-            embed = self.get_member_check_embed(member, to_check)
-            embed.title = "New member joined! Check results"
-            await self.send_mod_log(member.guild, embed=embed)
-
-            blank = self.check_nick_blank(member)[0]
-            if not blank:
-                await self.notify_nick_blank(member)
-        else:
+        if join_after is not None:
             await self.report_join_spam(member)
+            return
+
+        to_check = ["blank nick", "fresh account", "immediately joined"]
+        embed = self.get_member_check_embed(member, to_check)
+        embed.title = "New member joined! Check results"
+        await self.send_mod_log(member.guild, embed=embed)
+
+        blank = self.check_nick_blank(member)[0]
+        if not blank:
+            await self.notify_nick_blank(member)
+
+    @commands.Cog.listener()
+    async def on_member_remove(self, member):
+        # todo detect kick/ban
+        # await member.guild.fetch_ban(member)
+        fake_msg = FakeAuthorMessage(member)
+        join_after = self.ratelimit_check(self._join_cooldown, fake_msg)
+        if join_after is not None:
+            await self.report_join_spam(member)
+            return
+
+        embed = self.get_member_check_embed(member, [])
+        embed.title = "Member left!"
+        await self.send_mod_log(member.guild, embed=embed)
 
     async def report_join_spam(self, member):
         fake_msg = FakeGuildMessage(member.guild)
