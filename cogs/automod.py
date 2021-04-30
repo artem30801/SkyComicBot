@@ -6,11 +6,12 @@ from discord.ext import commands
 from discord_slash import cog_ext, SlashContext
 from discord_slash.utils.manage_commands import create_option, create_choice
 
-import collections
 import unicodedata
 import datetime
 from datetime import timedelta
 from dateutil import relativedelta
+
+import collections
 
 import cogs.cog_utils as utils
 import cogs.db_utils as db_utils
@@ -106,7 +107,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             return
 
         to_check = ["blank nick", "fresh account", "immediately joined"]
-        embed = self.get_member_check_embed(member, to_check)
+        embed = self.get_member_check_embed(member, {key: self.checks[key] for key in to_check})
         embed.title = "New member joined! Check results"
         await self.send_mod_log(member.guild, embed=embed)
 
@@ -124,7 +125,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             await self.report_join_spam(member)
             return
 
-        embed = self.get_member_check_embed(member, [])
+        embed = self.get_member_check_embed(member, {"fast leave": self.check_fast_leave})
         embed.title = "Member left!"
         await self.send_mod_log(member.guild, embed=embed)
 
@@ -146,10 +147,10 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
 
     def get_to_check(self, check):
         if check == "none":
-            return []
+            return {}
         if check == "all":
-            return list(self.checks.keys())
-        return [check]
+            return self.checks
+        return {check: self.checks[check]}
 
     @staticmethod
     def get_check_color(failed_count, total, intolerance=1):
@@ -184,13 +185,13 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         embed = self.get_member_check_embed(member, to_check)
         await ctx.send(embed=embed)
 
-    def get_member_check_embed(self, member, to_check):
+    def get_member_check_embed(self, member, checks: dict):
         embed = discord.Embed()
         embed.set_author(name=member.name, icon_url=member.avatar_url)
 
         failed_count = 0
-        for check in to_check:
-            result = self.checks[check](member)
+        for check, function in checks.items():
+            result = function(member)
             is_failed = result[0] is False
             addition = f"\n*{result[1]}*" if result[1] else ""
             if is_failed:
@@ -201,10 +202,10 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                                   f"{addition}",
                             inline=False)
 
-        embed.colour = self.get_check_color(failed_count, len(to_check))
+        embed.colour = self.get_check_color(failed_count, len(checks))
         embed.title = "User check results"
-        if to_check:
-            embed.description = f"**{failed_count}/{len(to_check)}** checks failed" if failed_count > 0 else "All checks passed!"
+        if checks:
+            embed.description = f"**{failed_count}/{len(checks)}** checks failed" if failed_count > 0 else "All checks passed!"
 
         embed.insert_field_at(0, name="User info",
                               value=f"*Mention:* {member.mention} "
@@ -229,16 +230,16 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
     async def check_server(self, ctx: SlashContext, check="all"):
         """Runs selected checks on all members of the server, shows server statistics"""
         await ctx.defer(hidden=False)
-        to_check = self.get_to_check(check)
+        checks = self.get_to_check(check)
 
         embed = discord.Embed()
         embed.set_author(name=ctx.guild.name, icon_url=ctx.guild.icon_url)
         total_failed = 0
         failed_members = set()
-        for check in to_check:
+        for check, function in checks.items():
             failed = []
             for member in ctx.guild.members:
-                if self.checks[check](member)[0] is False:
+                if function(member)[0] is False:
                     mention = f"- {member.mention} {member} [*mobile link*](https://discordapp.com/users/{member.id}/)"
                     failed.append(mention)
                     failed_members.add(member)
@@ -253,12 +254,12 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
 
             embed.add_field(name=check.capitalize(), value=value, inline=False)
 
-        embed.colour = self.get_check_color(total_failed, len(to_check), intolerance=0)
+        embed.colour = self.get_check_color(total_failed, len(checks), intolerance=0)
         embed.title = "Server check results"
         # embed.description =
-        if to_check:
+        if checks:
             if total_failed > 0:
-                value = f"**{total_failed}/{len(to_check)}** checks failed\n" +\
+                value = f"**{total_failed}/{len(checks)}** checks failed\n" + \
                         f"**{len(failed_members)}/{ctx.guild.member_count}** members failed checks"
             else:
                 value = "All checks passed!"
@@ -374,8 +375,14 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         result = abs_delta >= self.immediatly_join or (None if self.check_recently_joined(member)[0] else False)
         return result, utils.display_delta(delta) + " between registration and joining"
 
+    def check_fast_leave(self, member):
+        now = datetime.datetime.utcnow()
+        delta = relativedelta.relativedelta(now, member.joined_at)
+        abs_delta = now - member.joined_at
+        return abs_delta >= self.immediatly_join, utils.display_delta(delta) + " between joining and leaving"
+
     def check_member_spam(self, member):
-        pass
+        raise NotImplementedError
 
 
 def setup(bot):
