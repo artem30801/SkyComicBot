@@ -106,6 +106,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             await self.report_join_spam(member)
             return
 
+        logger.info(f"Member {member} joined guild {member.guild}")
         to_check = ["blank nick", "fresh account", "immediately joined"]
         embed = self.get_member_check_embed(member, {key: self.checks[key] for key in to_check})
         embed.title = "New member joined! Check results"
@@ -125,6 +126,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             await self.report_join_spam(member)
             return
 
+        logger.info(f"Member {member} left guild {member.guild}")
         embed = self.get_member_check_embed(member, {"fast leave": self.check_fast_leave})
         embed.title = "Member left!"
         field = embed.fields[0]
@@ -138,6 +140,8 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         report_after = self.ratelimit_check(self._join_report_cooldown, fake_msg)
         if report_after is not None:
             return
+
+        logger.important(f"Detected join spam by {self.format_caller(member)}!")
 
         embed = discord.Embed()
         embed.set_author(name=member.name, icon_url=member.avatar_url)
