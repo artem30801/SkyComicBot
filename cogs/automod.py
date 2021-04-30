@@ -127,6 +127,10 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
 
         embed = self.get_member_check_embed(member, {"fast leave": self.check_fast_leave})
         embed.title = "Member left!"
+        field = embed.fields[0]
+        lines = field.value.split("\n")
+        lines.insert(-1, f"*Left at:* {datetime.datetime.utcnow().strftime(utils.time_format)} (UTC)")
+        embed.set_field_at(0, name=field.name, value="\n".join(lines))
         await self.send_mod_log(member.guild, embed=embed)
 
     async def report_join_spam(self, member):
@@ -212,6 +216,8 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                                     f"[*mobile link*](https://discordapp.com/users/{member.id}/)\n"
                                     f"*Name:* {member}\n"
                                     f"*ID:* {member.id}\n"
+                                    f"*Registered at:* {member.created_at.strftime(utils.time_format)} (UTC)\n"
+                                    f"*Joined at:* {member.joined_at.strftime(utils.time_format)} (UTC)\n"
                                     f"*Roles:* {', '.join([role.mention for role in member.roles[1:]]) or 'None'}",
                               inline=False)
         return embed

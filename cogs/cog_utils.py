@@ -11,7 +11,9 @@ from discord_slash import SlashContext
 from fuzzywuzzy import fuzz
 from fuzzywuzzy import process
 
+time_format = '%d/%m/%Y, %H:%M:%S'
 embed_color = 0x72a3f2
+
 bot_manager_role = "skybox manager"
 stream_crew_role = "livestream crew"
 update_crew_role = "update crew"

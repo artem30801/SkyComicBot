@@ -210,9 +210,9 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
                         )
 
         embed.add_field(name="Running",
-                        value=f"*Since*: {self._started_at.strftime('%d/%m/%Y, %H:%M:%S')} (GMT)\n"
+                        value=f"*Since*: {self._started_at.strftime(utils.time_format)} (GMT)\n"
                               f"*For:* {display_delta(delta)}\n"
-                              f"*Last activity check*: {self._last_active_at.strftime('%d/%m/%Y, %H:%M:%S')} (GMT)",
+                              f"*Last activity check*: {self._last_active_at.strftime(utils.time_format)} (GMT)",
                         inline=False
                         )
 
