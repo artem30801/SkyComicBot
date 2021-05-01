@@ -62,7 +62,7 @@ class Service(utils.AutoLogCog, utils.StartupCog):
         await ctx.send(f"**Pulled updates from git** \n {result or 'No output'}")
 
         output, error = await utils.run(f"(cd {self.bot.current_dir}; "
-                                        f"source venv/bin/activate; "
+                                        f". ./venv/bin/activate; "
                                         f"pip install -r requirements.txt)")
         if not error:
             result = sum(1 for line in output.split("\n") if "already satisfied" not in line)
