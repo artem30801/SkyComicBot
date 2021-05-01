@@ -169,3 +169,19 @@ def display_delta(delta):
     }
     result = ", ".join([f"{value} {key + 's' if value > 1 else key}" for key, value in d.items() if value > 0])
     return result or "less than a minute"
+
+
+def format_lines(args: dict, lang="yaml"):
+    max_len = max(map(len, args.keys()))
+    lines = [f"```{lang}"] + [f"{name:<{max_len}}: {value}" for name, value in args.items()] + ["```"]
+    return "\n".join(lines)
+
+
+def format_size(size, accuracy=1):
+    units = ["Bytes", "KiB", "MiB", "GiB", "TiB"]
+    radix = float(1024)
+
+    for num, unit in enumerate(units):
+        if size < radix or num == len(units) - 1:
+            return f"{size:.{accuracy}f} {unit}"
+        size /= radix

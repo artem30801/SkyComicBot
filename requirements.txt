@@ -3,7 +3,8 @@ nest_asyncio
 tortoise-orm[aiomysql]
 discord.py
 discord-py-slash-command
+aiohttp
 python-dateutil
 fuzzywuzzy
-aiohttp
 colour
+psutil

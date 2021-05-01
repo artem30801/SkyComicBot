@@ -80,11 +80,16 @@ class Permissions(utils.AutoLogCog):
                        hidden=True,
                        )
 
+    async def get_permissions_list(self):
+        permitted_ids = await BotAdmins.filter(permitted=True).values_list("user_id", flat=True)
+        permitted_ids += list(self.bot.owner_ids)
+        return set(permitted_ids)
+
     @cog_ext.cog_subcommand(base="permissions", name="list", guild_ids=guild_ids)
     async def permissions_list(self, ctx: SlashContext):
         """Shows list of users with permissions for bots database"""
-        permitted_ids = await BotAdmins.filter(permitted=True).values_list("user_id", flat=True) + list(ctx.bot.owner_ids)
-        users = [ctx.bot.get_user(user_id) for user_id in set(permitted_ids)]
+        permitted_ids = await self.get_permissions_list()
+        users = [ctx.bot.get_user(user_id) for user_id in permitted_ids]
         mentions = [user.mention for user in users if user is not None]
         await ctx.send(f"Users with bot database access: {', '.join(sorted(mentions))}",
                        allowed_mentions=discord.AllowedMentions.none(),

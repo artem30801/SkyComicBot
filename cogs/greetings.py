@@ -1,20 +1,25 @@
-import io
-import logging
 import math
 import random
-from datetime import datetime, timedelta
+import logging
+import psutil
+
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
 
+from datetime import datetime, timedelta
+from dateutil import relativedelta
+
+import os
+import io
 import aiohttp
 import discord
-from dateutil import relativedelta
 from discord.ext import tasks
 from discord_slash import cog_ext, SlashContext
 from discord_slash.utils.manage_commands import create_option, create_choice
 
 import cogs.cog_utils as utils
+import cogs.db_utils as db_utils
 from cogs.cog_utils import guild_ids, display_delta
 from cogs.permissions import has_server_perms, has_bot_perms
 
@@ -178,8 +183,48 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
         guild_ids=guild_ids)
     async def hello(self, ctx: SlashContext, member: discord.Member = None):
         """Says hello to you or mentioned member."""
-        member = member or ctx.author
-        await ctx.send(self.get_greeting(member))
+        # tx.send(member = member or ctx.author
+        #         # await cself.get_greeting(member))
+        langs = ["1c", "abnf", "accesslog", "actionscript", "ada", "ado", "adoc", "ahk", "angelscript", "apache",
+                 "apacheconf", "applescript", "arcade", "arduino", "arm", "armasm", "as", "asc", "asciidoc", "aspectj",
+                 "atom", "autohotkey", "autoit", "avrasm", "awk", "axapta", "bash", "basic", "bat", "bf", "bind", "bnf",
+                 "brainfuck", "c", "c", "c#", "c++", "c-like", "cal", "capnp", "capnproto", "cc", "ceylon", "cjs",
+                 "clean", "clj", "clojure", "clojure-repl", "cls", "cmake", "cmake.in", "cmd", "coffee", "coffeescript",
+                 "console", "coq", "cos", "cpp", "cr", "craftcms", "crm", "crmsh", "crystal", "cs", "csharp", "cson",
+                 "csp", "css", "cxx", "d", "dart", "dcl", "delphi", "dfm", "diff", "django", "dns", "do", "docker",
+                 "dockerfile", "dos", "dpr", "dsconfig", "dst", "dts", "dust", "ebnf", "elixir", "elm", "erb", "erl",
+                 "erlang", "erlang-repl", "excel", "f90", "f95", "feature", "fix", "flix", "fortran", "freepascal",
+                 "fs", "fsharp", "gams", "gauss", "gcode", "gemspec", "gherkin", "glsl", "gml", "gms", "go", "golang",
+                 "golo", "gradle", "graph", "groovy", "gss", "gyp", "h", "h++", "haml", "handlebars", "haskell", "haxe",
+                 "hbs", "hbs", "hh", "hpp", "hs", "hsp", "html", "html.handlebars", "html.handlebars", "html.hbs",
+                 "html.hbs", "htmlbars", "htmlbars", "http", "https", "hx", "hxx", "hy", "hylang", "i7", "iced", "icl",
+                 "inform7", "ini", "instances", "ipython", "irb", "irpf90", "isbl", "java", "javascript", "jboss-cli",
+                 "jinja", "jldoctest", "js", "json", "jsp", "jsx", "julia", "julia-repl", "k", "kdb", "kotlin", "kt",
+                 "lasso", "lassoscript", "latex", "lazarus", "ldif", "leaf", "less", "lfm", "lisp", "livecodeserver",
+                 "livescript", "llvm", "lpr", "ls", "ls", "lsl", "lua", "m", "mak", "makefile", "markdown",
+                 "mathematica", "matlab", "maxima", "md", "mel", "mercury", "mikrotik", "mips", "mipsasm", "mizar",
+                 "mjs", "mk", "mkd", "mkdown", "ml", "ml", "mm", "mma", "mojolicious", "monkey", "moo", "moon",
+                 "moonscript", "n1ql", "nc", "nginx", "nginxconf", "nim", "nix", "nixos", "nsis", "obj-c", "objc",
+                 "objectivec", "ocaml", "openscad", "osascript", "oxygene", "p21", "parser3", "pas", "pascal", "patch",
+                 "pb", "pbi", "pcmk", "perl", "pf", "pf.conf", "pgsql", "php", "php-template", "php3", "php4", "php5",
+                 "php6", "php7", "pl", "plaintext", "plist", "pm", "podspec", "pony", "postgres", "postgresql",
+                 "powershell", "pp", "processing", "profile", "prolog", "properties", "protobuf", "ps", "ps1", "puppet",
+                 "purebasic", "py", "pycon", "python", "python-repl", "q", "qml", "qt", "r", "rb", "re", "reasonml",
+                 "rib", "roboconf", "routeros", "rs", "rsl", "rss", "ruby", "ruleslanguage", "rust", "sas", "scad",
+                 "scala", "scheme", "sci", "scilab", "scss", "sh", "shell", "smali", "smalltalk", "sml", "sqf", "sql",
+                 "st", "stan", "stanfuncs", "stata", "step", "step21", "stp", "styl", "stylus", "subunit", "sv", "svg",
+                 "svh", "swift", "taggerscript", "tao", "tap", "tcl", "tex", "text", "thor", "thrift", "tk", "toml",
+                 "tp", "ts", "twig", "txt", "typescript", "v", "vala", "vb", "vbnet", "vbs", "vbscript",
+                 "vbscript-html", "verilog", "vhdl", "vim", "wildfly-cli", "wl", "wsf", "x86asm", "xhtml", "xjb", "xl",
+                 "xls", "xlsx", "xml", "xpath", "xq", "xquery", "xsd", "xsl", "yaml", "yml", "zep", "zephir", "zone",
+                 "zsh"]
+        lines = []
+        for lang in langs:
+            m = f"Since:       01/05/2021, 17:09:49 '(GMT)'\nFor:         less than a minute ({lang})\nLast Check:  01/05/2021, 17:09:49 (GMT)"
+            lines.append(f"```{lang}\n{m}\n```")
+
+        for chunk in db_utils.chunks_split(lines):
+            await ctx.send("\n".join(chunk))
 
     @cog_ext.cog_subcommand(base="check", name="bot", guild_ids=guild_ids)
     @has_bot_perms()
@@ -198,26 +243,54 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
         commits_behind = commits_behind.strip()
         commits_behind = int(commits_behind) or "Up to date" if commits_behind else no
         embed.add_field(name="Version",
-                        value=f"*Version number:* {self.bot.version}\n"
-                              f"*Commit hash:* {git_hash.strip()}\n"
-                              f"*Commits behind:* {commits_behind}"
-                        )
+                        value=utils.format_lines({
+                            "Version number": self.bot.version,
+                            "Commit Hash": git_hash.strip(),
+                            "Commits Behind": commits_behind,
+                        }))
 
         embed.add_field(name="Statistics",
-                        value=f"*Latency:* {math.ceil(self.bot.latency * 100)} ms\n"
-                              f"*Servers:* {len(self.bot.guilds)}\n"
-                              f"*Users:* {len(self.bot.users)}"
-                        )
+                        value=utils.format_lines({
+                            "Servers": len(self.bot.guilds),
+                            "Users": len(self.bot.users),
+                            "Admins": len(await self.bot.get_cog("Permissions").get_permissions_list())
+                        }))
 
         embed.add_field(name="Running",
-                        value=f"*Since*: {self._started_at.strftime(utils.time_format)} (GMT)\n"
-                              f"*For:* {display_delta(delta)}\n"
-                              f"*Last activity check*: {self._last_active_at.strftime(utils.time_format)} (GMT)",
-                        inline=False
-                        )
+                        value=utils.format_lines({
+                            "Since": f"{self._started_at.strftime(utils.time_format)} (GMT)",
+                            "For": display_delta(delta),
+                            "Last check": f"{self._last_active_at.strftime(utils.time_format)} (GMT)",
+                        }), inline=False)
 
-        cogs = '\n'.join(self.bot.cogs.keys())
-        embed.add_field(name=f"Loaded cogs ({len(self.bot.cogs.keys())} total)", value=cogs)
+        cogs = '\n'.join([f"+ {key}" for key in self.bot.cogs.keys()])
+        embed.add_field(name=f"Loaded cogs ({len(self.bot.cogs.keys())} total)",
+                        value=f"```diff\n{cogs}\n```")
+
+        process = psutil.Process(os.getpid())
+        with process.oneshot():
+            memory = process.memory_info().rss
+            memory_p = process.memory_percent()
+            cpu_p = process.cpu_percent()
+
+            disk_info = psutil.disk_usage(self.bot.current_dir)
+
+        bot_used, _ = await utils.run(f"du -sh {self.bot.current_dir}")
+        if bot_used:
+            bot_used = int(bot_used.removesuffix(".").strip())
+            bot_used = utils.format_size(bot_used)
+        else:
+            bot_used = no
+
+        embed.add_field(name="Resource consumption",
+                        value=utils.format_lines({
+                            "CPU": f"{cpu_p:.1%}",
+                            "RAM": f"{utils.format_size(memory)} ({memory_p:.1%})",
+                            "Disk": f"{utils.format_size(disk_info.used)} "
+                                    f"({disk_info.percent:.1f}%)",
+                            "Storage": bot_used,
+                            "Latency": f"{math.ceil(self.bot.latency * 100)} ms"
+                        }))
 
         await ctx.send(embed=embed)
 
@@ -256,13 +329,14 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
                        options=[create_option(
                            name="type",
                            description="Type of activity",
-                           option_type=str,
+                           option_type=9,
                            required=True,
-                           choices=[create_choice(name=name, value=name) for name in activities.keys()]
+                           # choices=[create_choice(name=name, value=name) for name in activities.keys()]
                        )],
                        connector={"type": "activity_type"},
                        guild_ids=guild_ids)
     async def start_activity(self, ctx: SlashContext, activity_type):
+        print(activity_type)
         """Creates an activity invite for voice channel you are in"""
         if not ctx.author.voice:
             await ctx.send(hidden=True, content="You need to be in a voice channel to start an activity!")
