@@ -61,6 +61,14 @@ class Service(utils.AutoLogCog, utils.StartupCog):
 
         await ctx.send(f"**Pulled updates from git** \n {result or 'No output'}")
 
+        output, error = await utils.run(f"(cd {self.bot.current_dir}; pip install -r requirements.txt)")
+        if not error:
+            result = sum(1 for line in output.split("\n") if "already satisfied" not in line)
+            result = f"Installed/upgraded **{result}** packages"
+        else:
+            result = f"Error installing packages:\n {error.strip()}"
+        await ctx.send(f"**Installed requirements** \n {result}")
+
         if output.strip() != "Already up to date.":
             await self.restart.invoke(ctx)
 
