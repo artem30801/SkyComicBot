@@ -183,48 +183,8 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
         guild_ids=guild_ids)
     async def hello(self, ctx: SlashContext, member: discord.Member = None):
         """Says hello to you or mentioned member."""
-        # tx.send(member = member or ctx.author
-        #         # await cself.get_greeting(member))
-        langs = ["1c", "abnf", "accesslog", "actionscript", "ada", "ado", "adoc", "ahk", "angelscript", "apache",
-                 "apacheconf", "applescript", "arcade", "arduino", "arm", "armasm", "as", "asc", "asciidoc", "aspectj",
-                 "atom", "autohotkey", "autoit", "avrasm", "awk", "axapta", "bash", "basic", "bat", "bf", "bind", "bnf",
-                 "brainfuck", "c", "c", "c#", "c++", "c-like", "cal", "capnp", "capnproto", "cc", "ceylon", "cjs",
-                 "clean", "clj", "clojure", "clojure-repl", "cls", "cmake", "cmake.in", "cmd", "coffee", "coffeescript",
-                 "console", "coq", "cos", "cpp", "cr", "craftcms", "crm", "crmsh", "crystal", "cs", "csharp", "cson",
-                 "csp", "css", "cxx", "d", "dart", "dcl", "delphi", "dfm", "diff", "django", "dns", "do", "docker",
-                 "dockerfile", "dos", "dpr", "dsconfig", "dst", "dts", "dust", "ebnf", "elixir", "elm", "erb", "erl",
-                 "erlang", "erlang-repl", "excel", "f90", "f95", "feature", "fix", "flix", "fortran", "freepascal",
-                 "fs", "fsharp", "gams", "gauss", "gcode", "gemspec", "gherkin", "glsl", "gml", "gms", "go", "golang",
-                 "golo", "gradle", "graph", "groovy", "gss", "gyp", "h", "h++", "haml", "handlebars", "haskell", "haxe",
-                 "hbs", "hbs", "hh", "hpp", "hs", "hsp", "html", "html.handlebars", "html.handlebars", "html.hbs",
-                 "html.hbs", "htmlbars", "htmlbars", "http", "https", "hx", "hxx", "hy", "hylang", "i7", "iced", "icl",
-                 "inform7", "ini", "instances", "ipython", "irb", "irpf90", "isbl", "java", "javascript", "jboss-cli",
-                 "jinja", "jldoctest", "js", "json", "jsp", "jsx", "julia", "julia-repl", "k", "kdb", "kotlin", "kt",
-                 "lasso", "lassoscript", "latex", "lazarus", "ldif", "leaf", "less", "lfm", "lisp", "livecodeserver",
-                 "livescript", "llvm", "lpr", "ls", "ls", "lsl", "lua", "m", "mak", "makefile", "markdown",
-                 "mathematica", "matlab", "maxima", "md", "mel", "mercury", "mikrotik", "mips", "mipsasm", "mizar",
-                 "mjs", "mk", "mkd", "mkdown", "ml", "ml", "mm", "mma", "mojolicious", "monkey", "moo", "moon",
-                 "moonscript", "n1ql", "nc", "nginx", "nginxconf", "nim", "nix", "nixos", "nsis", "obj-c", "objc",
-                 "objectivec", "ocaml", "openscad", "osascript", "oxygene", "p21", "parser3", "pas", "pascal", "patch",
-                 "pb", "pbi", "pcmk", "perl", "pf", "pf.conf", "pgsql", "php", "php-template", "php3", "php4", "php5",
-                 "php6", "php7", "pl", "plaintext", "plist", "pm", "podspec", "pony", "postgres", "postgresql",
-                 "powershell", "pp", "processing", "profile", "prolog", "properties", "protobuf", "ps", "ps1", "puppet",
-                 "purebasic", "py", "pycon", "python", "python-repl", "q", "qml", "qt", "r", "rb", "re", "reasonml",
-                 "rib", "roboconf", "routeros", "rs", "rsl", "rss", "ruby", "ruleslanguage", "rust", "sas", "scad",
-                 "scala", "scheme", "sci", "scilab", "scss", "sh", "shell", "smali", "smalltalk", "sml", "sqf", "sql",
-                 "st", "stan", "stanfuncs", "stata", "step", "step21", "stp", "styl", "stylus", "subunit", "sv", "svg",
-                 "svh", "swift", "taggerscript", "tao", "tap", "tcl", "tex", "text", "thor", "thrift", "tk", "toml",
-                 "tp", "ts", "twig", "txt", "typescript", "v", "vala", "vb", "vbnet", "vbs", "vbscript",
-                 "vbscript-html", "verilog", "vhdl", "vim", "wildfly-cli", "wl", "wsf", "x86asm", "xhtml", "xjb", "xl",
-                 "xls", "xlsx", "xml", "xpath", "xq", "xquery", "xsd", "xsl", "yaml", "yml", "zep", "zephir", "zone",
-                 "zsh"]
-        lines = []
-        for lang in langs:
-            m = f"Since:       01/05/2021, 17:09:49 '(GMT)'\nFor:         less than a minute ({lang})\nLast Check:  01/05/2021, 17:09:49 (GMT)"
-            lines.append(f"```{lang}\n{m}\n```")
-
-        for chunk in db_utils.chunks_split(lines):
-            await ctx.send("\n".join(chunk))
+        member = member or ctx.author
+        await ctx.send(self.get_greeting(member))
 
     @cog_ext.cog_subcommand(base="check", name="bot", guild_ids=guild_ids)
     @has_bot_perms()
