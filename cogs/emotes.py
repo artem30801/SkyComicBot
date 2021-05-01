@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 
 import aiohttp
 from discord.ext import commands
-from discord_slash import cog_ext
+from discord_slash import cog_ext, SlashContext
 from discord_slash.utils.manage_commands import create_option, create_choice
 
 import cogs.cog_utils as utils
@@ -70,8 +70,9 @@ class Emotes(utils.AutoLogCog, utils.StartupCog):
                                 ),
                             ],
                             guild_ids=guild_ids)
-    async def emote_send(self, ctx, name):
+    async def emote_send(self, ctx: SlashContext, name: str):
         """Sends an emote image. Type incomplete name to send"""
+        await ctx.defer(hidden=True)
         ctx.cog = self
         emote = await EmoteConverter().convert(ctx, name)
         await self._send_emote(ctx, emote)
@@ -86,8 +87,9 @@ class Emotes(utils.AutoLogCog, utils.StartupCog):
                                 ),
                             ],
                             guild_ids=guild_ids)
-    async def emote_pick(self, ctx, emote):
+    async def emote_pick(self, ctx: SlashContext, emote: str):
         """Sends an emote image. Pick emote name from picker to send (only first 25 will be shown)"""
+        await ctx.defer(hidden=True)
         await self._send_emote(ctx, emote)
 
     async def _send_emote(self, ctx, emote):
@@ -120,8 +122,9 @@ class Emotes(utils.AutoLogCog, utils.StartupCog):
                             ],
                             guild_ids=guild_ids)
     @has_bot_perms()
-    async def emote_add(self, ctx, name, attachment_link):
+    async def emote_add(self, ctx: SlashContext, name: str, attachment_link: str):
         """Adds new emote. Will replace old emote with same name."""
+        await ctx.defer(hidden=False)
         logger.important(f"{self.format_caller(ctx)} trying to add emote '{name}' (image link - {attachment_link})")
 
         ext = Path(urlparse(attachment_link).path).suffix
@@ -161,8 +164,9 @@ class Emotes(utils.AutoLogCog, utils.StartupCog):
                             ],
                             guild_ids=guild_ids)
     @has_bot_perms()
-    async def emote_remove(self, ctx, name):
+    async def emote_remove(self, ctx: SlashContext, name: str):
         """Deletes existing emote."""
+        await ctx.defer(hidden=False)
         logger.important(f"{self.format_caller(ctx)} trying to remove emote '{name}'")
 
         ctx.cog = self
