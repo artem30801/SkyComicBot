@@ -54,7 +54,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
 
         self.blank_threshold = 2
         self.recent_join = timedelta(days=3)
-        self.immediatly_join = timedelta(minutes=60)
+        self.immediately_join = timedelta(minutes=60)
 
         self.rate = 10  # times
         self.per = 30  # per seconds
@@ -73,7 +73,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         self.checks = {"blank nick": self.check_nick_blank,
                        "fresh account": self.check_fresh_account,
                        "recently joined": self.check_recently_joined,
-                       "immediately joined": self.check_immidiate_join,
+                       "immediately joined": self.check_immediate_join,
                        }
         self.update_options()
 
@@ -385,17 +385,17 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         abs_delta = now - time
         return abs_delta >= self.recent_join, format_string.format(utils.display_delta(delta))
 
-    def check_immidiate_join(self, member):
+    def check_immediate_join(self, member):
         delta = relativedelta.relativedelta(member.joined_at, member.created_at)
         abs_delta = member.joined_at - member.created_at
-        result = abs_delta >= self.immediatly_join or (None if self.check_recently_joined(member)[0] else False)
+        result = abs_delta >= self.immediately_join or (None if self.check_recently_joined(member)[0] else False)
         return result, "Between registration and joining:\n" + utils.display_delta(delta)
 
     def check_fast_leave(self, member):
         now = datetime.datetime.utcnow()
         delta = relativedelta.relativedelta(now, member.joined_at)
         abs_delta = now - member.joined_at
-        return abs_delta >= self.immediatly_join, "Between joining and leaving:\n" + utils.display_delta(delta)
+        return abs_delta >= self.immediately_join, "Between joining and leaving:\n" + utils.display_delta(delta)
 
     def check_member_spam(self, member):
         raise NotImplementedError
