@@ -65,8 +65,12 @@ class Service(utils.AutoLogCog, utils.StartupCog):
                                         f". ./venv/bin/activate; "
                                         f"pip install -r requirements.txt)")
         if not error:
-            result = sum(1 for line in output.split("\n") if "already satisfied" not in line)
-            result = f"Installed/upgraded **{result}** packages"
+            lines = output.strip().split("\n")
+            if (last := lines[-1].strip()).startswith("Successfully installed"):
+                installed = last.removeprefix("Successfully installed").strip().split()
+                result = f"Installed/upgraded **{len(installed)}** packages: \n, {', '.join(installed)}"
+            else:
+                result = "No packages were installed or upgraded"
         else:
             result = f"Error installing packages:\n {error.strip()}"
         await ctx.send(f"**Installed requirements** \n {result}")
