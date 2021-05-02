@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 
 import asyncio
 import discord
@@ -108,8 +109,9 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
 
         logger.info(f"Member {member} joined guild {member.guild}")
         to_check = ["blank nick", "fresh account", "immediately joined"]
-        embed = self.get_member_check_embed(member, {key: self.checks[key] for key in to_check})
+        embed = self.get_basic_member_embed(member)
         embed.title = "New member joined! Check results"
+        self.add_checks_to_embed(embed, member, {key: self.checks[key] for key in to_check})
         await self.send_mod_log(member.guild, embed=embed)
 
         blank = self.check_nick_blank(member)[0]
@@ -127,12 +129,11 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             return
 
         logger.info(f"Member {member} left guild {member.guild}")
-        embed = self.get_member_check_embed(member, {"fast leave": self.check_fast_leave})
+        embed = self.get_basic_member_embed(member, additional_info={
+            "Left at": f"{datetime.datetime.utcnow().strftime(utils.time_format)} (UTC)"
+        })
         embed.title = "Member left!"
-        field = embed.fields[0]
-        lines = field.value.split("\n")
-        lines.insert(-1, f"*Left at:* {datetime.datetime.utcnow().strftime(utils.time_format)} (UTC)")
-        embed.set_field_at(0, name=field.name, value="\n".join(lines))
+        self.add_checks_to_embed(embed, member, {"fast leave": self.check_fast_leave})
         await self.send_mod_log(member.guild, embed=embed)
 
     async def report_join_spam(self, member):
@@ -190,14 +191,36 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         """Performs specified (or all) security checks on given member"""
         await ctx.defer(hidden=False)
         to_check = self.get_to_check(check)
-        embed = self.get_member_check_embed(member, to_check)
+        embed = self.get_basic_member_embed(member)
+        self.add_checks_to_embed(embed, member, to_check)
         await ctx.send(embed=embed)
 
-    def get_member_check_embed(self, member, checks: dict):
+    @staticmethod
+    def get_basic_member_embed(member: discord.Member, additional_info: Optional[dict] = None):
         embed = discord.Embed()
         embed.set_author(name=member.name, icon_url=member.avatar_url)
 
+        embed.add_field(name="Member",
+                        value=f"*Mention:* {member.mention} "
+                              f"[*mobile link*](https://discordapp.com/users/{member.id}/)\n"
+                              f"*Roles:* {', '.join([role.mention for role in member.roles[1:]]) or 'None'}",
+                        inline=False)
+
+        user_info = {
+            "Name": member,
+            "ID": member.id,
+            "Registered at": f"{member.created_at.strftime(utils.time_format)} (UTC)",
+            "Joined at": f"{member.joined_at.strftime(utils.time_format)} (UTC)",
+        }
+        if additional_info:
+            user_info = user_info | additional_info
+        embed.add_field(name="User info", value=utils.format_lines(user_info))
+
+        return embed
+
+    def add_checks_to_embed(self, embed: discord.Embed, member: discord.Member, checks: dict):
         failed_count = 0
+
         for check, function in checks.items():
             result = function(member)
             is_failed = result[0] is False
@@ -211,24 +234,10 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                             inline=False)
 
         embed.colour = self.get_check_color(failed_count, len(checks))
-        embed.title = "User check results"
-        if checks:
+        if not embed.title:
+            embed.title = "User check results"
+        if checks and not embed.description:
             embed.description = f"**{failed_count}/{len(checks)}** checks failed" if failed_count > 0 else "All checks passed!"
-
-        embed.insert_field_at(0, name="Member",
-                              value=f"*Mention:* {member.mention} "
-                                    f"[*mobile link*](https://discordapp.com/users/{member.id}/)\n"
-                                    f"*Roles:* {', '.join([role.mention for role in member.roles[1:]]) or 'None'}",
-                              inline=False)
-        embed.insert_field_at(1, name="User info",
-                              value=utils.format_lines({
-                                    "Name": member,
-                                    "ID": member.id,
-                                    "Registered at": f"{member.created_at.strftime(utils.time_format)} (UTC)",
-                                    "Joined at": f"{member.joined_at.strftime(utils.time_format)} (UTC)",
-                              }),
-                              inline=False)
-        return embed
 
     @cog_ext.cog_subcommand(base="check", name="server",
                             options=[
