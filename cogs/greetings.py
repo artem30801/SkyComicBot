@@ -237,14 +237,14 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
         bot_used, _ = await utils.run(f"du -s {self.bot.current_dir}")
         if bot_used:
             bot_used = int(bot_used.split("\t")[0].strip())
-            bot_used = utils.format_size(bot_used)
+            bot_used = utils.format_size(bot_used * 1024)
         else:
             bot_used = no
 
         embed.add_field(name="Resource consumption",
                         value=utils.format_lines({
                             "CPU": f"{cpu_p:.1%}",
-                            "RAM": f"{utils.format_size(memory)} ({memory_p:.1%})",
+                            "RAM": f"{utils.format_size(memory)} ({memory_p:.1f}%)",
                             "Disk": f"{utils.format_size(disk_info.used)} "
                                     f"({disk_info.percent:.1f}%)",
                             "Storage": bot_used,
