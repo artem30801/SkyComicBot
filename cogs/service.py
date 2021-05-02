@@ -61,11 +61,11 @@ class Service(utils.AutoLogCog, utils.StartupCog):
 
         await ctx.send(f"**Pulled updates from git** \n {result or 'No output'}")
 
-        output, error = await utils.run(f"(cd {self.bot.current_dir}; "
-                                        f". ./venv/bin/activate; "
-                                        f"pip install -r requirements.txt)")
+        pip_output, error = await utils.run(f"(cd {self.bot.current_dir}; "
+                                            f". ./venv/bin/activate; "
+                                            f"pip install -r requirements.txt)")
         if not error:
-            lines = output.strip().split("\n")
+            lines = pip_output.strip().split("\n")
             if (last := lines[-1].strip()).startswith("Successfully installed"):
                 installed = last.removeprefix("Successfully installed").strip().split()
                 result = f"Installed/upgraded **{len(installed)}** packages: \n, {', '.join(installed)}"
@@ -73,7 +73,7 @@ class Service(utils.AutoLogCog, utils.StartupCog):
                 result = "No packages were installed or upgraded"
         else:
             result = f"Error installing packages:\n {error.strip()}"
-        await ctx.send(f"**Installed requirements** \n {result}")
+        await ctx.send(f"**Installed pip requirements** \n {result}")
 
         if output.strip() != "Already up to date.":
             await self.restart.invoke(ctx)
