@@ -243,7 +243,8 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
     @cog_ext.cog_subcommand(base="role", name="list", guild_ids=guild_ids)
     async def role_list(self, ctx: SlashContext):
         """Shows list of all roles available to you. Roles are grouped by role group"""
-        embed = discord.Embed(title="Available roles:", color=utils.embed_color)
+        embed = utils.bot_embed(self.bot)
+        embed.title = "Available roles:"
         db_groups = await RoleGroup.all()
         for group in db_groups:
             if await self.get_group_state(group) != RoleGroupStates.normal:
@@ -259,7 +260,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
             embed.description = "Woe is me, there are no roles!"
 
         embed.set_footer(text="Use `/role assign <role>` to get those roles!",
-                         icon_url=ctx.guild.me.avatar_url)
+                         icon_url=self.bot.user.avatar_url)
         await ctx.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
 
     @cog_ext.cog_subcommand(base="role", name="database", guild_ids=guild_ids)

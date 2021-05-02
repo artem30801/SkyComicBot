@@ -191,9 +191,8 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
         """Shows bot information, statistics and status"""
         now = datetime.utcnow()
         delta = relativedelta.relativedelta(now, self._started_at)
-        embed = discord.Embed(colour=utils.embed_color)
+        embed = utils.bot_embed(self.bot)
         embed.title = "Bot check results"
-        embed.set_author(name=self.bot.user.name, icon_url=self.bot.user.avatar_url)
 
         no = "Not available"
         git_hash = (await utils.run(f"(cd {self.bot.current_dir}; git describe --always)"))[0] or no
@@ -311,7 +310,8 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
         embed.set_author(name=activity_type, icon_url=icon, url=invite)
         embed.set_thumbnail(url=icon)
         embed.description = f"**{activity_type}** activity just started in {voice.channel.mention}\n" \
-                            f"[Click this link and join!]({invite})"
+                            f"[Click this link and join!]({invite})\n" \
+                            f"This invite will expire after 1 day!"
 
         await ctx.send(embed=embed)
 
