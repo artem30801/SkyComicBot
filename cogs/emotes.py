@@ -125,6 +125,7 @@ class Emotes(utils.AutoLogCog, utils.StartupCog):
         total_height = sum(row_heights) + (padding + v_padding) * len(image_rows)
         canvas = Image.new('RGBA', (frame_width, total_height))
         draw = ImageDraw.Draw(canvas)
+        font = ImageFont.truetype(utils.abs_join(self.bot.current_dir, "v_ComicGeek_v1.0.ttf"), size=48)
         y = 0
         for row_num, row in enumerate(image_rows):
             for col_num, item in enumerate(row.items()):
@@ -139,12 +140,11 @@ class Emotes(utils.AutoLogCog, utils.StartupCog):
                 canvas.paste(image, (x_p, y_p))
                 # draw.rectangle([(x_p, y_p), (x_p+image.width, y_p+image.height)], outline=(255, 0, 0, 255), width=5)
                 # draw.rectangle([(x, y), (x+max_width, y+row_heights[row_num])], outline=(0, 255, 0, 255), width=5)
-                font = ImageFont.truetype("arial", size=48)
                 if Path(self.emotes[name]).suffix == ".gif":
                     name += " [GIF]"
 
-                text = "\n".join(text_to_lines(name, max_width - padding, draw, font))
-                draw.text((ceil(x_p + max_width / 2), y + row_heights[row_num]),
+                text = "\n".join(text_to_lines(name, max_width, draw, font))
+                draw.text((ceil(x_p + max_width / 2), y + row_heights[row_num] + padding),
                           text, anchor="ma", align="center", font=font)
 
             y += row_heights[row_num] + padding + v_padding
