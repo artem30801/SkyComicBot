@@ -159,7 +159,7 @@ def can_manage_role(bot: Member, role: Role) -> bool:
     return bot.top_role > role
 
 
-def display_delta(delta):
+def display_delta(delta, display_values_amount: int = 3):
     d = {
         "year": delta.years,
         "month": delta.months,
@@ -167,7 +167,10 @@ def display_delta(delta):
         "hour": delta.hours,
         "minute": delta.minutes,
     }
-    result = ", ".join([f"{value} {key + 's' if value > 1 else key}" for key, value in d.items() if value > 0])
+    values = [f"{value} {key + 's' if value > 1 else key}" for key, value in d.items() if value > 0]
+    if display_values_amount:
+        values = values[:display_values_amount]
+    result = ", ".join(values)
     return result or "less than a minute"
 
 
