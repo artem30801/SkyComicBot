@@ -201,7 +201,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         for check, function in checks.items():
             result = function(member)
             is_failed = result[0] is False
-            addition = f"\n*{result[1]}*" if result[1] else ""
+            addition = f"\n{utils.format_line(result[1])}" if result[1] else ""
             if is_failed:
                 failed_count += 1
 
@@ -215,14 +215,18 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         if checks:
             embed.description = f"**{failed_count}/{len(checks)}** checks failed" if failed_count > 0 else "All checks passed!"
 
-        embed.insert_field_at(0, name="User info",
+        embed.insert_field_at(0, name="Member",
                               value=f"*Mention:* {member.mention} "
                                     f"[*mobile link*](https://discordapp.com/users/{member.id}/)\n"
-                                    f"*Name:* {member}\n"
-                                    f"*ID:* {member.id}\n"
-                                    f"*Registered at:* {member.created_at.strftime(utils.time_format)} (UTC)\n"
-                                    f"*Joined at:* {member.joined_at.strftime(utils.time_format)} (UTC)\n"
                                     f"*Roles:* {', '.join([role.mention for role in member.roles[1:]]) or 'None'}",
+                              inline=False)
+        embed.insert_field_at(1, name="User info",
+                              value=utils.format_lines({
+                                    "Name": member,
+                                    "ID": member.id,
+                                    "Registered at": f"{member.created_at.strftime(utils.time_format)} (UTC)",
+                                    "Joined at": f"{member.joined_at.strftime(utils.time_format)} (UTC)",
+                              }),
                               inline=False)
         return embed
 
@@ -368,10 +372,10 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             return  # No need to send few notification, if there is a few home channels
 
     def check_fresh_account(self, member: discord.Member):
-        return self._check_recent(member.created_at, "Account is {} old")
+        return self._check_recent(member.created_at, "Account created:\n{} ago")
 
     def check_recently_joined(self, member: discord.Member):
-        return self._check_recent(member.joined_at or datetime.datetime.utcnow(), "Joined {} ago")
+        return self._check_recent(member.joined_at or datetime.datetime.utcnow(), "Joined:\n{} ago")
 
     def _check_recent(self, time, format_string="{}"):  # true = ok
         now = datetime.datetime.utcnow()
@@ -383,7 +387,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         delta = relativedelta.relativedelta(member.joined_at, member.created_at)
         abs_delta = member.joined_at - member.created_at
         result = abs_delta >= self.immediatly_join or (None if self.check_recently_joined(member)[0] else False)
-        return result, utils.display_delta(delta) + " between registration and joining"
+        return result, "Between registration and joining:\n" + utils.display_delta(delta)
 
     def check_fast_leave(self, member):
         now = datetime.datetime.utcnow()
