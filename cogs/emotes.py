@@ -201,7 +201,7 @@ class Emotes(utils.AutoLogCog, utils.StartupCog):
             image_binary.seek(0)
 
             embed = utils.bot_embed(self.bot)
-            embed.title = "Available emotes"
+            embed.title = f"Available emotes ({len(self.emotes)} total)"
             embed.description = "Click on the image to enlarge"
             embed.set_footer(text="Use `/emote pick <emote>` to send those emotes!",
                              icon_url=self.bot.user.avatar_url)
