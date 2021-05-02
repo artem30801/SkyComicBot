@@ -15,7 +15,7 @@ from cogs.logging_utils import BufferingSocketHandler
 
 # from cogs.comics import Comics
 
-version = "3.6.6"  # bump this with update releases
+version = "3.7.0"  # bump this with update releases
 
 nest_asyncio.apply()
 
@@ -81,6 +81,7 @@ async def main():
     logging.getLogger("discord.client").setLevel(logging.CRITICAL)
     logging.getLogger("discord.gateway").setLevel(logging.ERROR)
     logging.getLogger("discord.http").setLevel(logging.ERROR)
+    logging.getLogger("PIL").setLevel(logging.ERROR)
 
     bot.load_extension("cogs.service")
     bot.load_extension("cogs.converters")

@@ -1,12 +1,20 @@
-import glob
-import itertools
-import logging
 import os
 import re
+import glob
+import logging
+import itertools
+
 from pathlib import Path
 from urllib.parse import urlparse
 
+import PIL, os, glob
+from PIL import Image, ImageDraw, ImageFont
+from math import ceil, floor
+from itertools import islice
+
+import io
 import aiohttp
+import discord
 from discord.ext import commands
 from discord_slash import cog_ext, SlashContext
 from discord_slash.utils.manage_commands import create_option, create_choice
@@ -20,6 +28,26 @@ logger = logging.getLogger(__name__)
 
 def multi_glob(*patterns):
     return itertools.chain.from_iterable(glob.iglob(pattern) for pattern in patterns)
+
+
+def grouper(n, iterable):
+    it = iter(iterable)
+    return iter(lambda: tuple(islice(it, n)), ())
+
+
+def text_to_lines(text, max_width, draw, font):
+    lines = []
+    line = ""
+    for word in text.split():
+        temp_line = (line + " " + word).strip()
+        # print(temp_line, draw.textsize(temp_line, font=font)[0])
+        if draw.textsize(temp_line, font=font)[0] >= max_width and line:
+            lines.append(line.strip())
+            line = word
+        else:
+            line = temp_line
+    lines.append(line)
+    return lines
 
 
 image_exts = (".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff")
@@ -44,6 +72,7 @@ class Emotes(utils.AutoLogCog, utils.StartupCog):
 
         self.bot = bot
         self.emotes = dict()
+        self.emotes_thumbnail = None
 
     async def on_startup(self):
         await self.load_emotes()
@@ -56,9 +85,71 @@ class Emotes(utils.AutoLogCog, utils.StartupCog):
 
         self.emote_pick.options[0]["choices"] = [create_choice(name=key, value=key) for key in self.emotes.keys()][:25]
 
+        if self.emotes:
+            self.emotes_thumbnail = self.get_thumbnail_image()
+
         logger.debug(f"Loaded emotes: {self.emotes}")
         if not self._first_ready:
             await self.bot.slash.sync_all_commands()
+
+    def get_thumbnail_image(self):
+        logger.debug("Constructing thumbnail mosaic image...")
+        frame_width = 1920
+        images_per_row = min(5, len(self.emotes))
+        padding = 15
+        v_padding = 100
+
+        max_width = (frame_width - (images_per_row - 1) * padding) / images_per_row
+
+        images = {name: Image.open(path) for name, path in self.emotes.items()}
+        images = {k: v for k, v in sorted(images.items(), key=lambda x: x[1].width / x[1].height)}
+        image_rows = [dict(row) for row in grouper(images_per_row, images.items())]
+
+        row_heights = []
+        for row_num, row in enumerate(image_rows):
+            max_height = 0
+            for col_num, item in enumerate(row.items()):
+                name, image = item
+
+                scale = image.width / max_width
+                new_width = ceil(image.width / scale)
+                new_height = ceil(image.height / scale)
+
+                image = image.resize((new_width, new_height), Image.ANTIALIAS)
+                row[name] = image
+
+                max_height = max(max_height, image.height)
+
+            row_heights.append(max_height)
+
+        total_height = sum(row_heights) + (padding + v_padding) * len(image_rows)
+        canvas = Image.new('RGBA', (frame_width, total_height))
+        draw = ImageDraw.Draw(canvas)
+        y = 0
+        for row_num, row in enumerate(image_rows):
+            for col_num, item in enumerate(row.items()):
+                name, image = item
+                x = (padding + max_width) * col_num
+                width_diff = (max_width - image.width) / 2
+                height_diff = (row_heights[row_num] - image.height) / 2
+
+                x_p = ceil(x + width_diff)
+                y_p = ceil(y + height_diff)
+
+                canvas.paste(image, (x_p, y_p))
+                # draw.rectangle([(x_p, y_p), (x_p+image.width, y_p+image.height)], outline=(255, 0, 0, 255), width=5)
+                # draw.rectangle([(x, y), (x+max_width, y+row_heights[row_num])], outline=(0, 255, 0, 255), width=5)
+                font = ImageFont.truetype("arial", size=48)
+                if Path(self.emotes[name]).suffix == ".gif":
+                    name += " [GIF]"
+
+                text = "\n".join(text_to_lines(name, max_width - padding, draw, font))
+                draw.text((ceil(x_p + max_width / 2), y + row_heights[row_num]),
+                          text, anchor="ma", align="center", font=font)
+
+            y += row_heights[row_num] + padding + v_padding
+        logger.info("Constructed thumbnail mosaic image")
+        return canvas
 
     @cog_ext.cog_subcommand(base="emote", name="send",
                             options=[
@@ -99,10 +190,24 @@ class Emotes(utils.AutoLogCog, utils.StartupCog):
     @cog_ext.cog_subcommand(base="emote", name="list", guild_ids=guild_ids)
     async def emote_list(self, ctx):
         """Shows list of available emotes."""
-        if len(self.emotes) > 0:
-            await ctx.send("Available emotes: \n" + "\n".join([f"**{emote}**" for emote in self.emotes.keys()]))
-        else:
+        if self.emotes_thumbnail is None:
             await ctx.send("There is no available emotes. Add them with !emote add emote_name")
+            return
+
+        await ctx.defer()
+        image = self.emotes_thumbnail
+        with io.BytesIO() as image_binary:
+            image.save(image_binary, "PNG")
+            image_binary.seek(0)
+
+            embed = utils.bot_embed(self.bot)
+            embed.title = "Available emotes"
+            embed.description = "Click on the image to enlarge"
+            embed.set_footer(text="Use `/emote pick <emote>` to send those emotes!",
+                             icon_url=self.bot.user.avatar_url)
+
+            embed.set_image(url="attachment://emotes.png")
+            await ctx.send(embed=embed, file=discord.File(fp=image_binary, filename="emotes.png"))
 
     @cog_ext.cog_subcommand(base="emote", name="add",
                             options=[

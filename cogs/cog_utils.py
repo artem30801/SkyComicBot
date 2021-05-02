@@ -177,6 +177,7 @@ def display_delta(delta, display_values_amount: int = 3):
 def format_line(line, lang="yaml"):
     return f"```{lang}\n{line}```"
 
+
 def format_lines(args: dict, lang="yaml"):
     max_len = max(map(len, args.keys()))
     lines = [f"```{lang}"] + [f"{name:<{max_len}}: {value}" for name, value in args.items()] + ["```"]
@@ -191,3 +192,9 @@ def format_size(size, accuracy=1):
         if size < radix or num == len(units) - 1:
             return f"{size:.{accuracy}f} {unit}"
         size /= radix
+
+
+def bot_embed(bot):
+    embed = discord.Embed(colour=embed_color)
+    embed.set_author(name=bot.user.name, icon_url=bot.user.avatar_url)
+    return embed
