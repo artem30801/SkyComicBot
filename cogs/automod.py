@@ -395,7 +395,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         now = datetime.datetime.utcnow()
         delta = relativedelta.relativedelta(now, member.joined_at)
         abs_delta = now - member.joined_at
-        return abs_delta >= self.immediatly_join, utils.display_delta(delta) + " between joining and leaving"
+        return abs_delta >= self.immediatly_join, "Between joining and leaving:\n" + utils.display_delta(delta)
 
     def check_member_spam(self, member):
         raise NotImplementedError
