@@ -272,17 +272,19 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         embed.title = "Server check results"
         # embed.description =
         if checks:
-            if total_failed > 0:
-                value = f"**{total_failed}/{len(checks)}** checks failed\n" + \
-                        f"**{len(failed_members)}/{ctx.guild.member_count}** members failed checks"
-            else:
-                value = "All checks passed!"
+            value = utils.format_lines({
+                "Checks performed": f"{len(checks)}/{len(self.checks)}",
+                "Checks failed": f"{total_failed}/{len(checks)}",
+                "Members failed checks": f"{len(failed_members)}/{ctx.guild.member_count}"
+            })
             embed.insert_field_at(0, name="Summary", value=value)
 
         embed.insert_field_at(0, name="Statistics",
-                              value=f"**{ctx.guild.member_count}** members\n"
-                                    f"**{len(ctx.guild.roles)}** roles\n"
-                                    f"**{len(ctx.guild.emojis)}/{ctx.guild.emoji_limit}** emojis")
+                              value=utils.format_lines({
+                                  "Members": ctx.guild.member_count,
+                                  "Roles": len(ctx.guild.roles),
+                                  "Emojis": f"{len(ctx.guild.emojis)}/{ctx.guild.emoji_limit}"
+                              }))
         embed.set_footer(text="Use `/check member member: <member>` to check an individual member!",
                          icon_url=ctx.guild.me.avatar_url)
         await ctx.send(embed=embed)
