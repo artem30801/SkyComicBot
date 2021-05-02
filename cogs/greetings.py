@@ -186,7 +186,6 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
         await ctx.send(self.get_greeting(member))
 
     @cog_ext.cog_subcommand(base="check", name="bot", guild_ids=guild_ids)
-    @has_bot_perms()
     async def bot_info(self, ctx: SlashContext):
         """Shows bot information, statistics and status"""
         now = datetime.utcnow()
