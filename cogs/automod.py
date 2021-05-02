@@ -1,4 +1,7 @@
+import math
 import logging
+import psutil
+import os
 from typing import Optional
 
 import asyncio
@@ -8,15 +11,14 @@ from discord_slash import cog_ext, SlashContext
 from discord_slash.utils.manage_commands import create_option, create_choice
 
 import unicodedata
-import datetime
-from datetime import timedelta
+from datetime import datetime, timedelta
 from dateutil import relativedelta
 
 import collections
 
 import cogs.cog_utils as utils
 import cogs.db_utils as db_utils
-from cogs.cog_utils import guild_ids
+from cogs.cog_utils import guild_ids, display_delta
 from cogs.permissions import has_server_perms
 
 from colour import Color
@@ -130,7 +132,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
 
         logger.info(f"Member {member} left guild {member.guild}")
         embed = self.get_basic_member_embed(member, additional_info={
-            "Left at": f"{datetime.datetime.utcnow().strftime(utils.time_format)} (UTC)"
+            "Left at": f"{datetime.utcnow().strftime(utils.time_format)} (UTC)"
         })
         embed.title = "Member left!"
         self.add_checks_to_embed(embed, member, {"fast leave": self.check_fast_leave})
@@ -298,6 +300,81 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                          icon_url=ctx.guild.me.avatar_url)
         await ctx.send(embed=embed)
 
+    @cog_ext.cog_subcommand(base="check", name="bot", guild_ids=guild_ids)
+    async def bot_info(self, ctx: SlashContext):
+        """Shows bot information, statistics and status"""
+        now = datetime.utcnow()
+        started_at = self.bot.get_cog("Greetings").get_start_time()
+        last_active = self.bot.get_cog("Greetings").get_last_activity_time()
+        delta = relativedelta.relativedelta(now, started_at)
+        embed = utils.bot_embed(self.bot)
+        embed.title = "Bot check results"
+
+        no = "Not available"
+        git_hash = (await utils.run(f"(cd {self.bot.current_dir}; git describe --always)"))[0] or no
+        commits_behind = (await utils.run(f"(cd {self.bot.current_dir}; git fetch; "
+                                          f"git rev-list HEAD...origin/master --count)"))[0]
+        commits_behind = commits_behind.strip()
+        commits_behind = int(commits_behind) or "Up to date" if commits_behind else no
+        embed.add_field(name="Version",
+                        value=utils.format_lines({
+                            "Version number": self.bot.version,
+                            "Commit Hash": git_hash.strip(),
+                            "Commits Behind": commits_behind,
+                        }))
+
+        embed.add_field(name="Statistics",
+                        value=utils.format_lines({
+                            "Servers": len(self.bot.guilds),
+                            "Users": len(self.bot.users),
+                            "Admins": len(await self.bot.get_cog("Permissions").get_permissions_list())
+                        }))
+
+        embed.add_field(name="Running",
+                        value=utils.format_lines({
+                            "Since": f"{started_at.strftime(utils.time_format)} (GMT)",
+                            "For": display_delta(delta),
+                            "Last check": f"{last_active.strftime(utils.time_format)} (GMT)",
+                        }), inline=False)
+
+        extensions = {}
+        total_loaded = 0
+        for key in self.bot.initial_extensions:
+            loaded = key in self.bot.extensions
+            extensions[f"{'+' if loaded else '-'} {key}"] = "Online" if loaded else "Offline"
+            total_loaded += loaded
+
+        embed.add_field(name=f"Loaded extensions "
+                             f"({total_loaded:02d}/{len(self.bot.initial_extensions):02d} online)",
+                        value=utils.format_lines(extensions, lang="diff", delimiter=" :"))
+
+        process = psutil.Process(os.getpid())
+        with process.oneshot():
+            memory = process.memory_info().rss
+            memory_p = process.memory_percent()
+            cpu_p = process.cpu_percent()
+
+            disk_info = psutil.disk_usage(self.bot.current_dir)
+
+        bot_used, _ = await utils.run(f"du -s {self.bot.current_dir}")
+        if bot_used:
+            bot_used = int(bot_used.split("\t")[0].strip())
+            bot_used = utils.format_size(bot_used * 1024)
+        else:
+            bot_used = no
+
+        embed.add_field(name="Resource consumption",
+                        value=utils.format_lines({
+                            "CPU": f"{cpu_p:.1%}",
+                            "RAM": f"{utils.format_size(memory)} ({memory_p:.1f}%)",
+                            "Disk": f"{utils.format_size(disk_info.used)} "
+                                    f"({disk_info.percent:.1f}%)",
+                            "Storage": bot_used,
+                            "Latency": f"{math.ceil(self.bot.latency * 100)} ms"
+                        }))
+
+        await ctx.send(embed=embed)
+
     @staticmethod
     def ratelimit_check(cooldown, message):
         bucket = cooldown.get_bucket(message)
@@ -310,7 +387,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         if commands.has_permissions(manage_messages=True):
             try:
                 deleted = await message.channel.purge(  # limit=self.rate,
-                    after=message.created_at - datetime.timedelta(seconds=self.per),
+                    after=message.created_at - timedelta(seconds=self.per),
                     check=same_author, bulk=True)
             except discord.NotFound:
                 return None
@@ -386,10 +463,10 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         return self._check_recent(member.created_at, "Account created:\n{} ago")
 
     def check_recently_joined(self, member: discord.Member):
-        return self._check_recent(member.joined_at or datetime.datetime.utcnow(), "Joined:\n{} ago")
+        return self._check_recent(member.joined_at or datetime.utcnow(), "Joined:\n{} ago")
 
     def _check_recent(self, time, format_string="{}"):  # true = ok
-        now = datetime.datetime.utcnow()
+        now = datetime.utcnow()
         delta = relativedelta.relativedelta(now, time)
         abs_delta = now - time
         return abs_delta >= self.recent_join, format_string.format(utils.display_delta(delta))
@@ -401,7 +478,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         return result, "Between registration and joining:\n" + utils.display_delta(delta)
 
     def check_fast_leave(self, member):
-        now = datetime.datetime.utcnow()
+        now = datetime.utcnow()
         delta = relativedelta.relativedelta(now, member.joined_at)
         abs_delta = now - member.joined_at
         return abs_delta >= self.immediately_join, "Between joining and leaving:\n" + utils.display_delta(delta)

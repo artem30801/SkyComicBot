@@ -1,16 +1,12 @@
-import math
 import random
 import logging
-import psutil
 
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
 
 from datetime import datetime, timedelta
-from dateutil import relativedelta
 
-import os
 import io
 import aiohttp
 import discord
@@ -19,9 +15,8 @@ from discord_slash import cog_ext, SlashContext
 from discord_slash.utils.manage_commands import create_option, create_choice
 
 import cogs.cog_utils as utils
-import cogs.db_utils as db_utils
-from cogs.cog_utils import guild_ids, display_delta
-from cogs.permissions import has_server_perms, has_bot_perms
+from cogs.cog_utils import guild_ids
+from cogs.permissions import has_bot_perms
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +26,7 @@ activities = {
     "Betrayal.io": "773336526917861400",
     "Fishington.io": "814288819477020702"
 }
+
 
 class Greetings(utils.AutoLogCog, utils.StartupCog):
     """Simple greetings and welcome commands"""
@@ -52,7 +48,7 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
         guilds_list = [f"[{g.name}: {g.member_count} members]" for g in self.bot.guilds]
         logger.info(f"Current servers: {', '.join(guilds_list)}")
 
-        last_activity = self.get_last_activity_time()
+        last_activity = self.get_file_activity_time()
         self._started_at = datetime.utcnow()
         self._last_active_at = datetime.utcnow()
         self.update_activity_time_loop.start()
@@ -64,7 +60,7 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
     @tasks.loop(hours=1)
     async def update_activity_time_loop(self):
         self._last_active_at = datetime.utcnow()
-        self.update_last_activity_time()
+        self.update_file_activity_time()
 
     # @commands.Cog.listener()
     # async def on_member_join(self, member):
@@ -73,14 +69,14 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
     #         await channel.send(f"{self.get_greeting(member)}\nWelcome!")
     #         logger.info(f"Greeted new guild member {member}")
 
-    def get_last_activity_time(self) -> Optional[datetime]:
+    def get_file_activity_time(self) -> Optional[datetime]:
         try:
             with open(self.activity_file_path, 'r') as startup_time_file:
                 return datetime.strptime(startup_time_file.read(), self.activity_time_format)
         except (ValueError, OSError):
             return None
 
-    def update_last_activity_time(self):
+    def update_file_activity_time(self):
         """writes to the startup file current _started_at file"""
         last_activity = self._last_active_at.strftime(self.activity_time_format)
         with open(self.activity_file_path, 'w') as activity_time_file:
@@ -147,6 +143,12 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
             file = discord.File(io.BytesIO(attachment), attachment_name) if attachment is not None else None
             await channel.send(message, file=file)
 
+    def get_start_time(self) -> datetime:
+        return self._started_at
+
+    def get_last_activity_time(self) -> datetime:
+        return self._last_active_at
+
     def get_greeting(self, member):
         greetings = \
             ["Hi, {}!",
@@ -184,79 +186,6 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
         """Says hello to you or mentioned member."""
         member = member or ctx.author
         await ctx.send(self.get_greeting(member))
-
-    @cog_ext.cog_subcommand(base="check", name="bot", guild_ids=guild_ids)
-    async def bot_info(self, ctx: SlashContext):
-        """Shows bot information, statistics and status"""
-        now = datetime.utcnow()
-        delta = relativedelta.relativedelta(now, self._started_at)
-        embed = utils.bot_embed(self.bot)
-        embed.title = "Bot check results"
-
-        no = "Not available"
-        git_hash = (await utils.run(f"(cd {self.bot.current_dir}; git describe --always)"))[0] or no
-        commits_behind = (await utils.run(f"(cd {self.bot.current_dir}; git fetch; "
-                                          f"git rev-list HEAD...origin/master --count)"))[0]
-        commits_behind = commits_behind.strip()
-        commits_behind = int(commits_behind) or "Up to date" if commits_behind else no
-        embed.add_field(name="Version",
-                        value=utils.format_lines({
-                            "Version number": self.bot.version,
-                            "Commit Hash": git_hash.strip(),
-                            "Commits Behind": commits_behind,
-                        }))
-
-        embed.add_field(name="Statistics",
-                        value=utils.format_lines({
-                            "Servers": len(self.bot.guilds),
-                            "Users": len(self.bot.users),
-                            "Admins": len(await self.bot.get_cog("Permissions").get_permissions_list())
-                        }))
-
-        embed.add_field(name="Running",
-                        value=utils.format_lines({
-                            "Since": f"{self._started_at.strftime(utils.time_format)} (GMT)",
-                            "For": display_delta(delta),
-                            "Last check": f"{self._last_active_at.strftime(utils.time_format)} (GMT)",
-                        }), inline=False)
-
-        extensions = {}
-        total_loaded = 0
-        for key in self.bot.initial_extensions:
-            loaded = key in self.bot.extensions
-            extensions[f"{'+' if loaded else '-'} {key}"] = "Online" if loaded else "Offline"
-            total_loaded += loaded
-
-        embed.add_field(name=f"Loaded extensions "
-                             f"({total_loaded:02d}/{len(self.bot.initial_extensions):02d} online)",
-                        value=utils.format_lines(extensions, lang="diff", delimiter=" :"))
-
-        process = psutil.Process(os.getpid())
-        with process.oneshot():
-            memory = process.memory_info().rss
-            memory_p = process.memory_percent()
-            cpu_p = process.cpu_percent()
-
-            disk_info = psutil.disk_usage(self.bot.current_dir)
-
-        bot_used, _ = await utils.run(f"du -s {self.bot.current_dir}")
-        if bot_used:
-            bot_used = int(bot_used.split("\t")[0].strip())
-            bot_used = utils.format_size(bot_used * 1024)
-        else:
-            bot_used = no
-
-        embed.add_field(name="Resource consumption",
-                        value=utils.format_lines({
-                            "CPU": f"{cpu_p:.1%}",
-                            "RAM": f"{utils.format_size(memory)} ({memory_p:.1f}%)",
-                            "Disk": f"{utils.format_size(disk_info.used)} "
-                                    f"({disk_info.percent:.1f}%)",
-                            "Storage": bot_used,
-                            "Latency": f"{math.ceil(self.bot.latency * 100)} ms"
-                        }))
-
-        await ctx.send(embed=embed)
 
     async def get_activity__code(self, voice, application_id):
         url = f"https://discord.com/api/v8/channels/{voice.channel.id}/invites"
