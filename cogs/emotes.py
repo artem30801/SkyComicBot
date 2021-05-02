@@ -58,7 +58,7 @@ class EmoteConverter(commands.Converter):
         key = fuzzy_search(argument, ctx.cog.emotes.keys(), score_cutoff=30)
         if key is None:
             raise commands.BadArgument(f"Sorry, I cant find emote **{argument}**. "
-                                       f"Try *!emote list* command to see available emotes")
+                                       f"Try */emote list* command to see available emotes")
         return key
 
 
@@ -191,7 +191,7 @@ class Emotes(utils.AutoLogCog, utils.StartupCog):
     async def emote_list(self, ctx):
         """Shows list of available emotes."""
         if self.emotes_thumbnail is None:
-            await ctx.send("There is no available emotes. Add them with !emote add emote_name")
+            await ctx.send("There is no available emotes. Add them with /emote add name:<name> attachment_link:<link>")
             return
 
         await ctx.defer()
