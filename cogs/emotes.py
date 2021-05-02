@@ -95,14 +95,14 @@ class Emotes(utils.AutoLogCog, utils.StartupCog):
     def get_thumbnail_image(self):
         logger.debug("Constructing thumbnail mosaic image...")
         frame_width = 1920
-        images_per_row = min(5, len(self.emotes))
+        images_per_row = min(6, len(self.emotes))
         padding = 15
         v_padding = 100
 
         max_width = (frame_width - (images_per_row - 1) * padding) / images_per_row
 
         images = {name: Image.open(path) for name, path in self.emotes.items()}
-        images = {k: v for k, v in sorted(images.items(), key=lambda x: x[1].width / x[1].height)}
+        images = {k: v for k, v in sorted(images.items(), key=lambda x: (x[1].width / x[1].height, x[0]))}
         image_rows = [dict(row) for row in grouper(images_per_row, images.items())]
 
         row_heights = []
