@@ -237,7 +237,7 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
 
         bot_used, _ = await utils.run(f"du -sh {self.bot.current_dir}")
         if bot_used:
-            bot_used = int(bot_used.removesuffix(".").strip())
+            bot_used = int(bot_used.split("\t")[0].strip())
             bot_used = utils.format_size(bot_used)
         else:
             bot_used = no
