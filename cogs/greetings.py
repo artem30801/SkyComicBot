@@ -32,7 +32,6 @@ activities = {
     "Fishington.io": "814288819477020702"
 }
 
-
 class Greetings(utils.AutoLogCog, utils.StartupCog):
     """Simple greetings and welcome commands"""
 
@@ -289,14 +288,13 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
                        options=[create_option(
                            name="type",
                            description="Type of activity",
-                           option_type=9,
+                           option_type=str,
                            required=True,
-                           # choices=[create_choice(name=name, value=name) for name in activities.keys()]
+                           choices=[create_choice(name=name, value=name) for name in activities.keys()]
                        )],
                        connector={"type": "activity_type"},
                        guild_ids=guild_ids)
     async def start_activity(self, ctx: SlashContext, activity_type):
-        print(activity_type)
         """Creates an activity invite for voice channel you are in"""
         if not ctx.author.voice:
             await ctx.send(hidden=True, content="You need to be in a voice channel to start an activity!")
