@@ -1,27 +1,42 @@
-import math
+import asyncio
+import collections
 import logging
+import math
 import psutil
 import os
+import unicodedata
+from enum import Enum
+from datetime import datetime, timedelta
+
+import tortoise.exceptions
+from dateutil import relativedelta
 from typing import Optional
 
-import asyncio
+from colour import Color
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from discord_slash import cog_ext, SlashContext
 from discord_slash.utils.manage_commands import create_option, create_choice
-
-import unicodedata
-from datetime import datetime, timedelta
-from dateutil import relativedelta
-
-import collections
+from tortoise import fields
+from tortoise.models import Model
 
 import cogs.cog_utils as utils
 import cogs.db_utils as db_utils
 from cogs.cog_utils import guild_ids, display_delta
 from cogs.permissions import has_server_perms
 
-from colour import Color
+
+class StatusType(Enum):
+    BOT_STATUS = 1
+    GUILD_STATUS = 2
+
+
+class StatusMessage(Model):
+    guild_id = fields.BigIntField()
+    channel_id = fields.BigIntField()
+    message_id = fields.BigIntField()
+    status_type = fields.IntField()
+
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +53,7 @@ def check_blank(s, threshold=2):
     return False
 
 
-def bool_to_emoji(value):
+def status_to_emoji(value):
     if value is None:
         return "ℹ"
     return "✅" if value else "❌"
@@ -88,11 +103,9 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         self.check_member.options[1]["choices"] = choices
         self.check_server.options[0]["choices"] = choices
 
-    async def send_mod_log(self, guild, content="", **kwargs):
-        channels = await self.bot.get_cog("Channels").get_mod_log_channels(guild)
-        for channel in channels:
-            await channel.send(content, **kwargs)
-            # break
+    async def on_startup(self):
+        await self.try_start_bot_status_update()
+        await self.try_start_guilds_status_update()
 
     @commands.Cog.listener()
     async def on_message(self, message):
@@ -111,9 +124,9 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
 
         logger.info(f"Member {member} joined guild {member.guild}")
         to_check = ["blank nick", "fresh account", "immediately joined"]
-        embed = self.get_basic_member_embed(member)
+        embed = self.make_basic_member_embed(member)
         embed.title = "New member joined! Check results"
-        self.add_checks_to_embed(embed, member, {key: self.checks[key] for key in to_check})
+        self.add_checks_fields(embed, member, {key: self.checks[key] for key in to_check})
         await self.send_mod_log(member.guild, embed=embed)
 
         blank = self.check_nick_blank(member)[0]
@@ -131,12 +144,68 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             return
 
         logger.info(f"Member {member} left guild {member.guild}")
-        embed = self.get_basic_member_embed(member, additional_info={
+        embed = self.make_basic_member_embed(member, additional_info={
             "Left at": f"{datetime.utcnow().strftime(utils.time_format)} (UTC)"
         })
         embed.title = "Member left!"
-        self.add_checks_to_embed(embed, member, {"fast leave": self.check_fast_leave})
+        self.add_checks_fields(embed, member, {"fast leave": self.check_fast_leave})
         await self.send_mod_log(member.guild, embed=embed)
+
+    async def try_start_bot_status_update(self):
+        if self.update_bot_status.is_running():
+            return
+        if not await StatusMessage.exists(status_type=StatusType.BOT_STATUS.value):
+            return
+        self.update_bot_status.start()
+
+    @tasks.loop(minutes=5)
+    async def update_bot_status(self):
+        logger.info("Updating bot status messages")
+        try:
+            messages = await StatusMessage.filter(status_type=StatusType.BOT_STATUS.value)
+        except tortoise.exceptions.OperationalError:
+            # try next time
+            return
+        embed = await self.make_bot_status_embed()
+        self.add_update_timestamp(embed, utils.display_task_period(self.update_bot_status))
+        for message in messages:
+            channel = self.bot.get_channel(message.channel_id)
+            message = channel.get_partial_message(message.message_id)
+            await message.edit(embed=embed)
+
+    async def try_start_guilds_status_update(self):
+        if self.update_guilds_status.is_running():
+            return
+        if not await StatusMessage.exists(status_type=StatusType.GUILD_STATUS.value):
+            return
+        self.update_guilds_status.start()
+
+    @tasks.loop(hours=1)
+    async def update_guilds_status(self):
+        logger.info("Updating guild status messages")
+        guild_embeds = {}
+        try:
+            messages = await StatusMessage.filter(status_type=StatusType.GUILD_STATUS.value)
+        except tortoise.exceptions.OperationalError:
+            # try next time
+            return
+        for message in messages:
+            if message.guild_id in guild_embeds:
+                embed = guild_embeds[message.guild_id]
+            else:
+                guild = self.bot.get_guild(message.guild_id)
+                embed = await self.make_guild_status_embed(guild, self.checks)
+                self.add_update_timestamp(embed, utils.display_task_period(self.update_guilds_status))
+                guild_embeds[message.guild_id] = embed
+            channel = self.bot.get_channel(message.channel_id)
+            message = channel.get_partial_message(message.message_id)
+            await message.edit(embed=embed)
+
+    async def send_mod_log(self, guild, content="", **kwargs):
+        channels = await self.bot.get_cog("Channels").get_mod_log_channels(guild)
+        for channel in channels:
+            await channel.send(content, **kwargs)
+            # break
 
     async def report_join_spam(self, member):
         fake_msg = FakeGuildMessage(member.guild)
@@ -171,138 +240,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
 
         return db_utils.convert_color(colors[failed_count].hex_l)
 
-    @cog_ext.cog_subcommand(base="check", name="member",
-                            options=[
-                                create_option(
-                                    name="member",
-                                    description="Member to perform check on",
-                                    option_type=discord.Member,
-                                    required=True,
-                                ),
-                                create_option(
-                                    name="check",
-                                    description="Check to perform",
-                                    option_type=str,
-                                    required=False,
-                                    choices=[]
-                                ),
-                            ],
-                            guild_ids=guild_ids)
-    @has_server_perms()
-    async def check_member(self, ctx: SlashContext, member: discord.Member, check="all"):
-        """Performs specified (or all) security checks on given member"""
-        await ctx.defer(hidden=False)
-        to_check = self.get_to_check(check)
-        embed = self.get_basic_member_embed(member)
-        self.add_checks_to_embed(embed, member, to_check)
-        await ctx.send(embed=embed)
-
-    @staticmethod
-    def get_basic_member_embed(member: discord.Member, additional_info: Optional[dict] = None):
-        embed = discord.Embed()
-        embed.set_author(name=member.name, icon_url=member.avatar_url)
-
-        embed.add_field(name="Member",
-                        value=f"*Mention:* {member.mention} "
-                              f"[*mobile link*](https://discordapp.com/users/{member.id}/)\n"
-                              f"*Roles:* {', '.join([role.mention for role in member.roles[1:]]) or 'None'}",
-                        inline=False)
-
-        user_info = {
-            "Name": member,
-            "ID": member.id,
-            "Registered at": f"{member.created_at.strftime(utils.time_format)} (UTC)",
-            "Joined at": f"{member.joined_at.strftime(utils.time_format)} (UTC)",
-        }
-        if additional_info:
-            user_info = user_info | additional_info
-        embed.add_field(name="User info", value=utils.format_lines(user_info))
-
-        return embed
-
-    def add_checks_to_embed(self, embed: discord.Embed, member: discord.Member, checks: dict):
-        failed_count = 0
-
-        for check, function in checks.items():
-            result = function(member)
-            is_failed = result[0] is False
-            addition = f"\n{utils.format_line(result[1])}" if result[1] else ""
-            if is_failed:
-                failed_count += 1
-
-            embed.add_field(name=check.capitalize(),
-                            value=f"{bool_to_emoji(result[0])} {'Failed' if is_failed else 'Passed'}"
-                                  f"{addition}",
-                            inline=False)
-
-        embed.colour = self.get_check_color(failed_count, len(checks))
-        if not embed.title:
-            embed.title = "User check results"
-        if checks and not embed.description:
-            embed.description = f"**{failed_count}/{len(checks)}** checks failed" if failed_count > 0 else "All checks passed!"
-
-    @cog_ext.cog_subcommand(base="check", name="server",
-                            options=[
-                                create_option(
-                                    name="check",
-                                    description="Check to perform (all by default)",
-                                    option_type=str,
-                                    required=False,
-                                    choices=[]
-                                ),
-                            ],
-                            guild_ids=guild_ids)
-    async def check_server(self, ctx: SlashContext, check="all"):
-        """Runs selected checks on all members of the server, shows server statistics"""
-        await ctx.defer(hidden=False)
-        checks = self.get_to_check(check)
-
-        embed = discord.Embed()
-        embed.set_author(name=ctx.guild.name, icon_url=ctx.guild.icon_url)
-        total_failed = 0
-        failed_members = set()
-        for check, function in checks.items():
-            failed = []
-            for member in ctx.guild.members:
-                if function(member)[0] is False:
-                    mention = f"- {member.mention} {member} [*mobile link*](https://discordapp.com/users/{member.id}/)"
-                    failed.append(mention)
-                    failed_members.add(member)
-
-            value = f"{bool_to_emoji(not failed)} "
-            if not failed:
-                value += "Passed"
-            else:
-                total_failed += 1
-                failed_str = '\n'.join(failed)
-                value += f"Failed **{len(failed)}/{ctx.guild.member_count}** members:\n {failed_str}"
-
-            embed.add_field(name=check.capitalize(), value=value, inline=False)
-
-        embed.colour = self.get_check_color(total_failed, len(checks), intolerance=0)
-        embed.title = "Server check results"
-        # embed.description =
-        if checks:
-            value = utils.format_lines({
-                "Checks performed": f"{len(checks)}/{len(self.checks)}",
-                "Checks failed": f"{total_failed}/{len(checks)}",
-                "Members failed checks": f"{len(failed_members)}/{ctx.guild.member_count}"
-            })
-            embed.insert_field_at(0, name="Summary", value=value)
-
-        embed.insert_field_at(0, name="Statistics",
-                              value=utils.format_lines({
-                                  "Members": ctx.guild.member_count,
-                                  "Roles": len(ctx.guild.roles),
-                                  "Emojis": f"{len(ctx.guild.emojis)}/{ctx.guild.emoji_limit}"
-                              }))
-        embed.set_footer(text="Use `/check member member: <member>` to check an individual member!",
-                         icon_url=ctx.guild.me.avatar_url)
-        await ctx.send(embed=embed)
-
-    @cog_ext.cog_subcommand(base="check", name="bot", guild_ids=guild_ids)
-    async def bot_info(self, ctx: SlashContext):
-        """Shows bot information, statistics and status"""
+    async def make_bot_status_embed(self) -> discord.Embed:
         now = datetime.utcnow()
         started_at = self.bot.get_cog("Greetings").get_start_time()
         last_active = self.bot.get_cog("Greetings").get_last_activity_time()
@@ -334,7 +272,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                         value=utils.format_lines({
                             "Since": f"{started_at.strftime(utils.time_format)} (GMT)",
                             "For": display_delta(delta),
-                            "Last check": f"{last_active.strftime(utils.time_format)} (GMT)",
+                            "Last activity check": f"{last_active.strftime(utils.time_format)} (GMT)",
                         }), inline=False)
 
         extensions = {}
@@ -373,7 +311,208 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                             "Latency": f"{math.ceil(self.bot.latency * 100)} ms"
                         }))
 
+        return embed
+
+    async def make_guild_status_embed(self, guild: discord.Guild, checks: dict) -> discord.Embed:
+        embed = discord.Embed()
+        embed.set_author(name=guild.name, icon_url=guild.icon_url)
+        total_failed = 0
+        failed_members = set()
+        for check, function in checks.items():
+            failed = []
+            for member in guild.members:
+                if function(member)[0] is False:
+                    mention = f"- {member.mention} {member} [*mobile link*](https://discordapp.com/users/{member.id}/)"
+                    failed.append(mention)
+                    failed_members.add(member)
+
+            value = f"{status_to_emoji(not failed)} "
+            if not failed:
+                value += "Passed"
+            else:
+                total_failed += 1
+                failed_str = '\n'.join(failed)
+                value += f"Failed **{len(failed)}/{guild.member_count}** members:\n {failed_str}"
+
+            embed.add_field(name=check.capitalize(), value=value, inline=False)
+
+        embed.colour = self.get_check_color(total_failed, len(checks), intolerance=0)
+        embed.title = "Server check results"
+        # embed.description =
+        if checks:
+            value = utils.format_lines({
+                "Checks performed": f"{len(checks)}/{len(self.checks)}",
+                "Checks failed": f"{total_failed}/{len(checks)}",
+                "Members failed checks": f"{len(failed_members)}/{guild.member_count}"
+            })
+            embed.insert_field_at(0, name="Summary", value=value)
+
+        embed.insert_field_at(0, name="Statistics",
+                              value=utils.format_lines({
+                                  "Members": guild.member_count,
+                                  "Roles": len(guild.roles),
+                                  "Emojis": f"{len(guild.emojis)}/{guild.emoji_limit}"
+                              }))
+        embed.set_footer(text="Use `/check member member: <member>` to check an individual member!",
+                         icon_url=guild.me.avatar_url)
+        return embed
+
+    @staticmethod
+    def make_basic_member_embed(member: discord.Member, additional_info: Optional[dict] = None) -> discord.Embed:
+        embed = discord.Embed()
+        embed.set_author(name=member.name, icon_url=member.avatar_url)
+
+        embed.add_field(name="Member",
+                        value=f"*Mention:* {member.mention} "
+                              f"[*mobile link*](https://discordapp.com/users/{member.id}/)\n"
+                              f"*Roles:* {', '.join([role.mention for role in member.roles[1:]]) or 'None'}",
+                        inline=False)
+
+        user_info = {
+            "Name": member,
+            "ID": member.id,
+            "Registered at": f"{member.created_at.strftime(utils.time_format)} (UTC)",
+            "Joined at": f"{member.joined_at.strftime(utils.time_format)} (UTC)",
+        }
+        if additional_info:
+            user_info = user_info | additional_info
+        embed.add_field(name="User info", value=utils.format_lines(user_info))
+
+        return embed
+
+    def add_checks_fields(self, embed: discord.Embed, member: discord.Member, checks: dict):
+        failed_count = 0
+
+        for check, function in checks.items():
+            status, info = function(member)
+            addition = f"\n{utils.format_line(info)}" if info else ""
+            if status is False:
+                failed_count += 1
+
+            embed.add_field(name=check.capitalize(),
+                            value=f"{status_to_emoji(status)} {'Failed' if status is False else 'Passed'}"
+                                  f"{addition}",
+                            inline=False)
+
+        embed.colour = self.get_check_color(failed_count, len(checks))
+        if not embed.title:
+            embed.title = "User check results"
+        if checks and not embed.description:
+            embed.description = f"**{failed_count}/{len(checks)}** checks failed" if failed_count > 0 else "All checks passed!"
+
+    @staticmethod
+    def add_update_timestamp(embed: discord.Embed, update_period: str):
+        embed.timestamp = datetime.utcnow()
+        embed.set_footer(text=f"Updates every {update_period}")
+
+    @cog_ext.cog_subcommand(base="check", name="member",
+                            options=[
+                                create_option(
+                                    name="member",
+                                    description="Member to perform check on",
+                                    option_type=discord.Member,
+                                    required=True,
+                                ),
+                                create_option(
+                                    name="check",
+                                    description="Check to perform",
+                                    option_type=str,
+                                    required=False,
+                                    choices=[]
+                                ),
+                            ],
+                            guild_ids=guild_ids)
+    @has_server_perms()
+    async def check_member(self, ctx: SlashContext, member: discord.Member, check="all"):
+        """Performs specified (or all) security checks on given member"""
+        await ctx.defer(hidden=False)
+        to_check = self.get_to_check(check)
+        embed = self.make_basic_member_embed(member)
+        self.add_checks_fields(embed, member, to_check)
         await ctx.send(embed=embed)
+
+    @cog_ext.cog_subcommand(base="check", name="server",
+                            options=[
+                                create_option(
+                                    name="check",
+                                    description="Check to perform (all by default or if auto-update enabled)",
+                                    option_type=str,
+                                    required=False,
+                                    choices=[]
+                                ),
+                                create_option(
+                                    name="auto-update",
+                                    description="Enables auto-update for this message (one per channel)",
+                                    option_type=bool,
+                                    required=False
+                                ),
+                            ],
+                            connector={"auto-update": "auto_update"},
+                            guild_ids=guild_ids)
+    @has_server_perms()
+    async def check_server(self, ctx: SlashContext, check="all", auto_update=False):
+        """Runs selected checks on all members of the server, shows server statistics"""
+        await ctx.defer(hidden=False)
+        checks = self.checks if auto_update else self.get_to_check(check)
+        embed = await self.make_guild_status_embed(ctx.guild, checks)
+        if auto_update:
+            self.add_update_timestamp(embed, utils.display_task_period(self.update_guilds_status))
+        message = await ctx.send(embed=embed)
+        if auto_update:
+            await self.save_status_message(message, StatusType.GUILD_STATUS)
+            await self.try_start_guilds_status_update()
+
+    @cog_ext.cog_subcommand(base="check", name="bot",
+                            options=[
+                                create_option(
+                                    name="auto-update",
+                                    description="Enables auto-update for this message (one per channel)",
+                                    option_type=bool,
+                                    required=False
+                                ),
+                            ],
+                            connector={"auto-update": "auto_update"},
+                            guild_ids=guild_ids)
+    async def bot_info(self, ctx: SlashContext, auto_update=False):
+        """Shows bot information, statistics and status"""
+        if auto_update:
+            # Only server admins can create updateable messages
+            await has_server_perms().predicate(ctx)
+        await ctx.defer(hidden=False)
+        embed = await self.make_bot_status_embed()
+        if auto_update:
+            self.add_update_timestamp(embed, utils.display_task_period(self.update_bot_status))
+        message = await ctx.send(embed=embed)
+        if auto_update:
+            await self.save_status_message(message, StatusType.BOT_STATUS)
+            await self.try_start_bot_status_update()
+
+    @cog_ext.cog_subcommand(base="check", name="refresh", guild_ids=guild_ids)
+    async def refresh_status(self, ctx: SlashContext):
+        """Forcefully refreshes all status messages with auto-update"""
+        await ctx.defer(hidden=True)
+        if self.update_bot_status.is_running():
+            self.update_bot_status.restart()
+        if self.update_guilds_status.is_running():
+            self.update_guilds_status.restart()
+        await ctx.send("Refreshed!", hidden=True)
+
+    @staticmethod
+    async def save_status_message(message: discord.Message, status_type: StatusType):
+        status_message = await StatusMessage.get_or_none(
+            guild_id=message.guild.id,
+            channel_id=message.channel.id,
+            status_type=status_type.value
+        )
+        if not status_message:
+            # Can't use get_or_create since message_id is mandatory and I don't want to make it not mandatory
+            status_message = StatusMessage(
+                guild_id=message.guild.id,
+                channel_id=message.channel.id,
+                status_type=status_type.value
+            )
+        status_message.message_id = message.id
+        await status_message.save()
 
     @staticmethod
     def ratelimit_check(cooldown, message):

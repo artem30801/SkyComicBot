@@ -180,6 +180,25 @@ def display_delta(delta, display_values_amount: int = 3):
     return result or "less than a minute"
 
 
+def display_task_period(task, separator=" and ") -> str:
+    result = ""
+    if task.hours:
+        result = "hour" if task.hours == 1 else f"{task.hours} hours"
+    if task.minutes:
+        if task.minutes == 1:
+            minutes = "1 minute" if result else "minute"
+        else:
+            minutes = f"{task.minutes} minutes"
+        result = result + separator + minutes if result else minutes
+    if task.seconds:
+        if task.seconds == 1:
+            seconds = "1 second" if result else "second"
+        else:
+            seconds = f"{task.seconds} seconds"
+        result = result + separator + seconds if result else seconds
+    return result or "unsupported"
+
+
 def format_line(line, lang="yaml"):
     return f"```{lang}\n{line}```"
 

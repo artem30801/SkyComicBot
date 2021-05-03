@@ -15,7 +15,7 @@ from cogs.logging_utils import BufferingSocketHandler
 
 # from cogs.comics import Comics
 
-version = "3.7.0"  # bump this with update releases
+version = "3.7.1"  # bump this with update releases
 
 nest_asyncio.apply()
 
@@ -99,7 +99,7 @@ async def main():
 
     bot.load_initial_extensions(initial_extensions)
 
-    models = ["cogs.permissions", "cogs.roles", "cogs.converters", "cogs.channels", ]  # "cogs.comics",
+    models = ["cogs.permissions", "cogs.roles", "cogs.converters", "cogs.channels", "cogs.automod", ]  # "cogs.comics",
     try:
         await Tortoise.init(db_url=bot.config["auth"]["db_url"],
                             modules={"models": models})
