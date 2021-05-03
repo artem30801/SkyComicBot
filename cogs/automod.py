@@ -167,7 +167,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             # try next time
             return
         embed = await self.make_bot_status_embed()
-        self.add_update_timestamp(embed, utils.display_task_period(self.update_bot_status))
+        self.add_update_info(embed, utils.display_task_period(self.update_bot_status))
         for message in messages:
             channel = self.bot.get_channel(message.channel_id)
             message = channel.get_partial_message(message.message_id)
@@ -195,7 +195,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             else:
                 guild = self.bot.get_guild(message.guild_id)
                 embed = await self.make_guild_status_embed(guild, self.checks)
-                self.add_update_timestamp(embed, utils.display_task_period(self.update_guilds_status))
+                self.add_update_info(embed, utils.display_task_period(self.update_guilds_status))
                 guild_embeds[message.guild_id] = embed
             channel = self.bot.get_channel(message.channel_id)
             message = channel.get_partial_message(message.message_id)
@@ -401,7 +401,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             embed.description = f"**{failed_count}/{len(checks)}** checks failed" if failed_count > 0 else "All checks passed!"
 
     @staticmethod
-    def add_update_timestamp(embed: discord.Embed, update_period: str):
+    def add_update_info(embed: discord.Embed, update_period: str):
         embed.timestamp = datetime.utcnow()
         embed.set_footer(text=f"Updates every {update_period}")
 
@@ -455,11 +455,12 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         await ctx.defer(hidden=False)
         checks = self.checks if auto_update else self.get_to_check(check)
         embed = await self.make_guild_status_embed(ctx.guild, checks)
-        if auto_update:
-            self.add_update_timestamp(embed, utils.display_task_period(self.update_guilds_status))
         message = await ctx.send(embed=embed)
         if auto_update:
             await self.save_status_message(message, StatusType.GUILD_STATUS)
+            # Add update info after saving message to DB in case DB errors to prevent misleading info in message
+            self.add_update_info(embed, utils.display_task_period(self.update_guilds_status))
+            await message.edit(embed=embed)
             await self.try_start_guilds_status_update()
 
     @cog_ext.cog_subcommand(base="check", name="bot",
@@ -473,18 +474,19 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                             ],
                             connector={"auto-update": "auto_update"},
                             guild_ids=guild_ids)
-    async def bot_info(self, ctx: SlashContext, auto_update=False):
+    async def check_bot(self, ctx: SlashContext, auto_update=False):
         """Shows bot information, statistics and status"""
         if auto_update:
-            # Only server admins can create updateable messages
+            # Only server admins can create updatable messages
             await has_server_perms().predicate(ctx)
         await ctx.defer(hidden=False)
         embed = await self.make_bot_status_embed()
-        if auto_update:
-            self.add_update_timestamp(embed, utils.display_task_period(self.update_bot_status))
         message = await ctx.send(embed=embed)
         if auto_update:
             await self.save_status_message(message, StatusType.BOT_STATUS)
+            # Add update info after saving message to DB in case DB errors to prevent misleading info in message
+            self.add_update_info(embed, utils.display_task_period(self.update_bot_status))
+            await message.edit(embed=embed)
             await self.try_start_bot_status_update()
 
     @cog_ext.cog_subcommand(base="check", name="refresh", guild_ids=guild_ids)
