@@ -1,20 +1,19 @@
+import glob
+import io
+import itertools
+import logging
 import os
 import re
-import glob
-import logging
-import itertools
+import zipfile
 
+from itertools import islice
+from math import ceil
 from pathlib import Path
 from urllib.parse import urlparse
 
-import PIL, os, glob
-from PIL import Image, ImageDraw, ImageFont
-from math import ceil, floor
-from itertools import islice
-
-import io
 import aiohttp
 import discord
+from PIL import Image, ImageDraw, ImageFont
 from discord.ext import commands
 from discord_slash import cog_ext, SlashContext
 from discord_slash.utils.manage_commands import create_option, create_choice
@@ -203,7 +202,8 @@ class Emotes(utils.AutoLogCog, utils.StartupCog):
     async def emote_list(self, ctx):
         """Shows list of available emotes."""
         if not self.has_thumbnail:
-            await ctx.send("There is no available emotes. Add them with /emote add name:<name> attachment_link:<link>")
+            await ctx.send("There is no available emotes. "
+                           "`Add them with /emote add name:<name> attachment_link:<link>`")
             return
 
         await ctx.defer()
@@ -216,6 +216,23 @@ class Emotes(utils.AutoLogCog, utils.StartupCog):
 
         embed.set_image(url="attachment://emotes.png")
         await ctx.send(embed=embed, file=discord.File(self.emotes_thumbnail, filename="emotes.png"))
+
+    @cog_ext.cog_subcommand(base="emote", name="archive", guild_ids=guild_ids)
+    async def emote_archive(self, ctx: SlashContext):
+        """Sends zip archive containing all emote images"""
+        await ctx.defer()
+
+        with io.BytesIO() as zip_binary:
+            with zipfile.ZipFile(zip_binary, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+                for path in self.emotes.values():
+                    zf.write(path, os.path.basename(path))
+            zip_binary.seek(0)
+
+            embed = utils.bot_embed(self.bot)
+            embed.title = f"Compressed emotes archive ({len(self.emotes)} total)"
+            embed.description = f"Here, I prepared a compressed archive of all the emotes in my storage!"
+
+            await ctx.send(embed=embed, file=discord.File(zip_binary, filename="emotes.zip"))
 
     @cog_ext.cog_subcommand(base="emote", name="add",
                             options=[
