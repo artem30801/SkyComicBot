@@ -133,6 +133,12 @@ def ensure_dir(directory):
         os.makedirs(directory)
 
 
+def ensure_path_dirs(path):
+    dirs = os.path.split(os.path.dirname(path))
+    for i in range(len(dirs)):
+        ensure_dir(abs_join(*dirs[:i + 1]))
+
+
 async def send_file(channel, path, filename=None):
     file = discord.File(path, filename=filename or os.path.split(path)[1])
     await channel.send(" ", file=file)

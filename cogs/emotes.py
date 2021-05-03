@@ -72,7 +72,11 @@ class Emotes(utils.AutoLogCog, utils.StartupCog):
 
         self.bot = bot
         self.emotes = dict()
-        self.emotes_thumbnail = None
+
+        self.emotes_thumbnail = abs_join(self.bot.current_dir, "emotes", "tmp", "thumbnail.png")
+        self.has_thumbnail = False
+
+        utils.ensure_path_dirs(self.emotes_thumbnail)
 
     async def on_startup(self):
         await self.load_emotes()
@@ -86,13 +90,17 @@ class Emotes(utils.AutoLogCog, utils.StartupCog):
         self.emote_pick.options[0]["choices"] = [create_choice(name=key, value=key) for key in self.emotes.keys()][:25]
 
         if self.emotes:
-            self.emotes_thumbnail = self.get_thumbnail_image()
+            self.generate_thumbnail_image()
+            self.has_thumbnail = True
+        else:
+            os.remove(self.emotes_thumbnail)
+            self.has_thumbnail = False
 
         logger.debug(f"Loaded emotes: {self.emotes}")
         if not self._first_ready:
             await self.bot.slash.sync_all_commands()
 
-    def get_thumbnail_image(self):
+    def generate_thumbnail_image(self):
         logger.debug("Constructing thumbnail mosaic image...")
         frame_width = 1920
         images_per_row = min(6, len(self.emotes))
@@ -149,7 +157,11 @@ class Emotes(utils.AutoLogCog, utils.StartupCog):
 
             y += row_heights[row_num] + padding + v_padding
         logger.info("Constructed thumbnail mosaic image")
-        return canvas
+
+        with open(self.emotes_thumbnail, "wb") as image_file:
+            canvas.save(image_file, "PNG")
+
+        logger.debug("Saved thumbnail mosaic image")
 
     @cog_ext.cog_subcommand(base="emote", name="send",
                             options=[
@@ -190,24 +202,20 @@ class Emotes(utils.AutoLogCog, utils.StartupCog):
     @cog_ext.cog_subcommand(base="emote", name="list", guild_ids=guild_ids)
     async def emote_list(self, ctx):
         """Shows list of available emotes."""
-        if self.emotes_thumbnail is None:
+        if not self.has_thumbnail:
             await ctx.send("There is no available emotes. Add them with /emote add name:<name> attachment_link:<link>")
             return
 
         await ctx.defer()
-        image = self.emotes_thumbnail
-        with io.BytesIO() as image_binary:
-            image.save(image_binary, "PNG")
-            image_binary.seek(0)
 
-            embed = utils.bot_embed(self.bot)
-            embed.title = f"Available emotes ({len(self.emotes)} total)"
-            embed.description = "Click on the image to enlarge"
-            embed.set_footer(text="Use `/emote pick <emote>` to send those emotes!",
-                             icon_url=self.bot.user.avatar_url)
+        embed = utils.bot_embed(self.bot)
+        embed.title = f"Available emotes ({len(self.emotes)} total)"
+        embed.description = "Click on the image to enlarge"
+        embed.set_footer(text="Use `/emote pick <emote>` to send those emotes!",
+                         icon_url=self.bot.user.avatar_url)
 
-            embed.set_image(url="attachment://emotes.png")
-            await ctx.send(embed=embed, file=discord.File(fp=image_binary, filename="emotes.png"))
+        embed.set_image(url="attachment://emotes.png")
+        await ctx.send(embed=embed, file=discord.File(self.emotes_thumbnail, filename="emotes.png"))
 
     @cog_ext.cog_subcommand(base="emote", name="add",
                             options=[
