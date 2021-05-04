@@ -33,6 +33,8 @@ class SkyComicBot(commands.Bot):
         self.config = {}
         self.load_config("config.json")
 
+        self.initial_extensions = []
+
     def real_path(self, *paths):
         return utils.abs_join(self.current_dir, *paths)
 
@@ -43,6 +45,14 @@ class SkyComicBot(commands.Bot):
         self.owner_ids = set(self.config["discord"]["owner_ids"])
         utils.guild_ids = self.config["discord"]["guild_ids"]
         self.token = self.config["auth"]["discord_token"]
+
+    def load_initial_extensions(self, extensions):
+        for name in extensions:
+            self.initial_extensions.append(name)
+            try:
+                super().load_extension(name)
+            except Exception as error:
+                logging.critical(f"Error during loading extension {name}: {repr(error)}", exc_info=error)
 
     async def start(self):
         await super().start(self.token)
@@ -83,16 +93,11 @@ async def main():
     logging.getLogger("discord.http").setLevel(logging.ERROR)
     logging.getLogger("PIL").setLevel(logging.ERROR)
 
-    bot.load_extension("cogs.service")
-    bot.load_extension("cogs.converters")
-    bot.load_extension("cogs.greetings")
-    bot.load_extension("cogs.permissions")
-    bot.load_extension("cogs.errors")
-    bot.load_extension("cogs.automod")
-    bot.load_extension("cogs.reactions")
-    bot.load_extension("cogs.emotes")
-    bot.load_extension("cogs.roles")
-    bot.load_extension("cogs.channels")
+    initial_extensions = ["cogs.errors", "cogs.permissions", "cogs.service", "cogs.channels",
+                          "cogs.greetings", "cogs.automod", "cogs.converters",
+                          "cogs.reactions", "cogs.emotes", "cogs.roles"]
+
+    bot.load_initial_extensions(initial_extensions)
 
     models = ["cogs.permissions", "cogs.roles", "cogs.converters", "cogs.channels", ]  # "cogs.comics",
     try:
