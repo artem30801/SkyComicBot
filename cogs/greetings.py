@@ -220,9 +220,16 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
                             "Last check": f"{self._last_active_at.strftime(utils.time_format)} (GMT)",
                         }), inline=False)
 
-        cogs = '\n'.join([f"+ {key}" for key in self.bot.cogs.keys()])
-        embed.add_field(name=f"Loaded cogs ({len(self.bot.cogs.keys())} total)",
-                        value=f"```diff\n{cogs}\n```")
+        extensions = {}
+        total_loaded = 0
+        for key in self.bot.initial_extensions:
+            loaded = key in self.bot.extensions
+            extensions[f"{'+' if loaded else '-'} {key}"] = "Online" if loaded else "Offline"
+            total_loaded += loaded
+
+        embed.add_field(name=f"Loaded extensions "
+                             f"({total_loaded:02d}/{len(self.bot.initial_extensions):02d} online)",
+                        value=utils.format_lines(extensions, lang="diff", delimiter=" :"))
 
         process = psutil.Process(os.getpid())
         with process.oneshot():
