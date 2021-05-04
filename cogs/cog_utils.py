@@ -184,9 +184,9 @@ def format_line(line, lang="yaml"):
     return f"```{lang}\n{line}```"
 
 
-def format_lines(args: dict, lang="yaml"):
+def format_lines(args: dict, lang="yaml", delimiter=":"):
     max_len = max(map(len, args.keys()))
-    lines = [f"```{lang}"] + [f"{name:<{max_len}}: {value}" for name, value in args.items()] + ["```"]
+    lines = [f"```{lang}"] + [f"{name:<{max_len}}{delimiter} {value}" for name, value in args.items()] + ["```"]
     return "\n".join(lines)
 
 
