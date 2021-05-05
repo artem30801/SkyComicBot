@@ -8,7 +8,6 @@ import unicodedata
 from enum import Enum
 from datetime import datetime, timedelta
 
-import tortoise.exceptions
 from dateutil import relativedelta
 from typing import Optional
 
@@ -55,12 +54,18 @@ def check_blank(s, threshold=2):
 
 def status_to_emoji(value):
     if value is None:
-        return "ℹ"
-    return "✅" if value else "❌"
+        return utils.info_emote
+    return utils.check_emote if value else utils.fail_emote
 
 
 FakeAuthorMessage = collections.namedtuple("FakeAuthorMessage", ["author"])
 FakeGuildMessage = collections.namedtuple("FakeGuildMessage", ["guild"])
+FakeCheckContext = collections.namedtuple("FakeCheckContext", [
+    "guild",
+    "channel",
+    "author",
+    "bot",
+])
 
 
 class AutoMod(utils.AutoLogCog, utils.StartupCog):
@@ -73,6 +78,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         self.blank_threshold = 2
         self.recent_join = timedelta(days=3)
         self.immediately_join = timedelta(minutes=60)
+        self.resume_update_timeout = 30  # seconds
 
         self.rate = 10  # times
         self.per = 30  # per seconds
@@ -87,6 +93,10 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             2, 60 * 60, commands.BucketType.user)
         self._join_report_cooldown = commands.CooldownMapping.from_cooldown(
             1, 15 * 60, commands.BucketType.guild)
+
+        self.bot_status_messages = {}
+        self.guild_status_messages = {}
+        self.messages_to_stop = set()
 
         self.checks = {"blank nick": self.check_nick_blank,
                        "fresh account": self.check_fresh_account,
@@ -104,13 +114,13 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         self.check_server.options[0]["choices"] = choices
 
     async def on_startup(self):
-        await self.try_start_bot_status_update()
-        await self.try_start_guilds_status_update()
+        await self.update_bot_status_tasks()
+        await self.update_guilds_status_tasks()
 
     @commands.Cog.listener()
     async def on_message(self, message):
         if not message.guild:
-            return 
+            return
         if message.author == message.guild.me:
             return
 
@@ -153,55 +163,156 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         self.add_checks_fields(embed, member, {"fast leave": self.check_fast_leave})
         await self.send_mod_log(member.guild, embed=embed)
 
-    async def try_start_bot_status_update(self):
-        if self.update_bot_status.is_running():
-            return
-        if not await StatusMessage.exists(status_type=StatusType.BOT_STATUS.value):
-            return
-        self.update_bot_status.start()
+    async def update_bot_status_tasks(self):
+        messages = StatusMessage.filter(status_type=StatusType.BOT_STATUS.value)
+        messages = [message async for message in messages if message.message_id not in self.messages_to_stop]
+        self.bot_status_messages = {message.message_id: message.channel_id for message in messages}
+
+        if self.bot_status_messages and not self.update_bot_status.is_running():
+            self.update_bot_status.start()
+            self.wait_for_bot_status_reactions.start()
+        elif not self.bot_status_messages and self.update_bot_status.is_running():
+            self.update_bot_status.stop()
+            self.wait_for_bot_status_reactions.stop()
 
     @tasks.loop(minutes=5)
     async def update_bot_status(self):
         logger.info("Updating bot status messages")
-        try:
-            messages = await StatusMessage.filter(status_type=StatusType.BOT_STATUS.value)
-        except tortoise.exceptions.OperationalError:
-            # try next time
-            return
         embed = await self.make_bot_status_embed()
         self.add_update_info(embed, utils.display_task_period(self.update_bot_status))
-        for message in messages:
-            channel = self.bot.get_channel(message.channel_id)
-            message = channel.get_partial_message(message.message_id)
+        for message_id, channel_id in self.bot_status_messages.items():
+            channel = self.bot.get_channel(channel_id)
+            message = channel.get_partial_message(message_id)
             await message.edit(embed=embed)
+            await message.clear_reaction(utils.refresh_emote)
+            await message.add_reaction(utils.fail_emote)
 
-    async def try_start_guilds_status_update(self):
-        if self.update_guilds_status.is_running():
-            return
-        if not await StatusMessage.exists(status_type=StatusType.GUILD_STATUS.value):
-            return
-        self.update_guilds_status.start()
+    @tasks.loop()
+    async def wait_for_bot_status_reactions(self):
+
+        def is_stop_update_reaction(reaction_payload: discord.RawReactionActionEvent):
+            if reaction_payload.member.bot:
+                return False
+            return reaction_payload.message_id in self.bot_status_messages and str(reaction_payload.emoji) == utils.fail_emote
+
+        payload = await self.bot.wait_for('raw_reaction_add', check=is_stop_update_reaction)
+        # Don't wait for the all reaction handling, start waiting for new reaction immediately
+        await asyncio.create_task(self.try_stop_status_update(payload, StatusType.BOT_STATUS))
+
+    async def update_guilds_status_tasks(self):
+        messages = StatusMessage.filter(status_type=StatusType.GUILD_STATUS.value)
+        messages = [message async for message in messages if message.message_id not in self.messages_to_stop]
+        self.guild_status_messages = {message.message_id: message.channel_id for message in messages}
+
+        if self.guild_status_messages and not self.update_guilds_status.is_running():
+            self.update_guilds_status.start()
+            self.wait_for_guild_status_reactions.start()
+        elif not self.guild_status_messages and self.update_guilds_status.is_running():
+            self.update_guilds_status.stop()
+            self.wait_for_guild_status_reactions.stop()
 
     @tasks.loop(hours=1)
     async def update_guilds_status(self):
         logger.info("Updating guild status messages")
-        guild_embeds = {}
-        try:
-            messages = await StatusMessage.filter(status_type=StatusType.GUILD_STATUS.value)
-        except tortoise.exceptions.OperationalError:
-            # try next time
-            return
-        for message in messages:
-            if message.guild_id in guild_embeds:
-                embed = guild_embeds[message.guild_id]
+        guild_embeds = dict()
+        for message_id, channel_id in self.guild_status_messages.items():
+            channel = self.bot.get_channel(channel_id)
+            if channel.guild in guild_embeds:
+                embed = guild_embeds[channel.guild]
             else:
-                guild = self.bot.get_guild(message.guild_id)
-                embed = await self.make_guild_status_embed(guild, self.checks)
+                embed = await self.make_guild_status_embed(channel.guild, self.checks)
                 self.add_update_info(embed, utils.display_task_period(self.update_guilds_status))
-                guild_embeds[message.guild_id] = embed
-            channel = self.bot.get_channel(message.channel_id)
-            message = channel.get_partial_message(message.message_id)
+                guild_embeds[channel.guild] = embed
+            message = channel.get_partial_message(message_id)
             await message.edit(embed=embed)
+            await message.clear_reaction(utils.refresh_emote)
+            await message.add_reaction(utils.fail_emote)
+
+    @tasks.loop()
+    async def wait_for_guild_status_reactions(self):
+
+        def is_stop_update_reaction(reaction_payload: discord.RawReactionActionEvent):
+            if reaction_payload.member.bot:
+                return False
+            return reaction_payload.message_id in self.guild_status_messages and str(reaction_payload.emoji) == utils.fail_emote
+
+        payload = await self.bot.wait_for('raw_reaction_add', check=is_stop_update_reaction)
+        # Don't wait for the all reaction handling, start waiting for new reaction immediately
+        await asyncio.create_task(self.try_stop_status_update(payload, StatusType.GUILD_STATUS))
+
+    async def try_stop_status_update(self, reaction: discord.RawReactionActionEvent, status_type: StatusType):
+        # Predictively remove message from status messages, prevents additional attempts to stop updates for this message
+        status_messages = self.bot_status_messages if status_type == StatusType.BOT_STATUS else self.guild_status_messages
+        status_messages.pop(reaction.message_id)
+        self.messages_to_stop.add(reaction.message_id)
+        
+        guild = self.bot.get_guild(reaction.guild_id)
+        channel = guild.get_channel(reaction.channel_id)
+        message = channel.get_partial_message(reaction.message_id)
+
+        logger.info(f"Trying to stop {'bot' if status_type == StatusType.BOT_STATUS else 'guild'} status updates in {channel} in {guild}. "
+                    f"Message ID: {message.id}")
+
+        try:
+            ctx = FakeCheckContext(guild=guild, channel=channel, author=reaction.member, bot=self.bot)
+            await has_server_perms().predicate(ctx)
+        except commands.CheckFailure:
+            logger.info(f"Prevented {reaction.member} from stopping status updates")
+            await message.remove_reaction(reaction.emoji, reaction.member)
+        else:
+            if await self.try_stop_message_update(message, reaction.member):
+                if status_type == StatusType.BOT_STATUS:
+                    await self.update_bot_status_tasks()
+                else:
+                    await self.update_guilds_status_tasks()
+            else:
+                status_messages[message.id] = channel.id
+        finally:
+            self.messages_to_stop.remove(reaction.message_id)
+
+    async def try_stop_message_update(self, message: discord.PartialMessage, requester: discord.Member):
+        # Get full message from partial
+        message = await message.channel.fetch_message(message.id)
+
+        await message.clear_reaction(utils.fail_emote)
+        if utils.refresh_emote in [reaction.emoji for reaction in message.reactions]:
+            await message.clear_reaction(utils.refresh_emote)
+
+        embed = message.embeds[0]
+        prev_footer = embed.footer
+        embed.set_footer(text=f"Press {utils.refresh_emote} in next {self.resume_update_timeout} seconds to resume updates")
+        await message.edit(embed=embed)
+
+        await message.add_reaction(utils.refresh_emote)
+
+        def is_cancel_reaction(reaction_payload: discord.RawReactionActionEvent):
+            if reaction_payload.message_id != message.id:
+                return False
+            if reaction_payload.member != requester:
+                return False
+            return str(reaction_payload.emoji) == utils.refresh_emote
+
+        try:
+            await self.bot.wait_for('raw_reaction_add', timeout=self.resume_update_timeout, check=is_cancel_reaction)
+        except asyncio.TimeoutError:
+            # There was no reaction, removing status message
+            status_message = await StatusMessage.get_or_none(message_id=message.id)
+            if status_message:
+                await status_message.delete()
+
+            logger.info(f"Stopped status updates for message {message.id}")
+            embed.set_footer(text="Updates stopped")
+            await message.edit(embed=embed)
+            await message.clear_reaction(utils.refresh_emote)
+            return True
+        else:
+            logger.info(f"Aborting stop attempt for message {message.id}")
+            # restore previous footer and reactions
+            embed.set_footer(text=prev_footer.text, icon_url=prev_footer.icon_url)
+            await message.edit(embed=embed)
+            await message.clear_reaction(utils.refresh_emote)
+            await message.add_reaction(utils.fail_emote)
+            return False
 
     async def send_mod_log(self, guild, content="", **kwargs):
         channels = await self.bot.get_cog("Channels").get_mod_log_channels(guild)
@@ -405,7 +516,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
     @staticmethod
     def add_update_info(embed: discord.Embed, update_period: str):
         embed.timestamp = datetime.utcnow()
-        embed.set_footer(text=f"Updates every {update_period}")
+        embed.set_footer(text=f"Updates every {update_period}. Press {utils.fail_emote} to stop updates")
 
     @cog_ext.cog_subcommand(base="check", name="member",
                             options=[
@@ -459,11 +570,20 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         embed = await self.make_guild_status_embed(ctx.guild, checks)
         message = await ctx.send(embed=embed)
         if auto_update:
-            await self.save_status_message(message, StatusType.GUILD_STATUS)
+            prev_message_id = await self.save_status_message(message, StatusType.GUILD_STATUS)
             # Add update info after saving message to DB in case DB errors to prevent misleading info in message
             self.add_update_info(embed, utils.display_task_period(self.update_guilds_status))
             await message.edit(embed=embed)
-            await self.try_start_guilds_status_update()
+            await self.update_guilds_status_tasks()
+            await message.add_reaction(utils.fail_emote)
+            # Update footer and reactions for prev message
+            if prev_message_id:
+                prev_message = await ctx.channel.fetch_message(prev_message_id)
+                embed = prev_message.embeds[0]
+                embed.set_footer(text="Updates stopped")
+                await prev_message.edit(embed=embed)
+                await prev_message.clear_reaction(utils.fail_emote)
+                await prev_message.clear_reaction(utils.refresh_emote)
 
     @cog_ext.cog_subcommand(base="check", name="bot",
                             options=[
@@ -485,11 +605,20 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         embed = await self.make_bot_status_embed()
         message = await ctx.send(embed=embed)
         if auto_update:
-            await self.save_status_message(message, StatusType.BOT_STATUS)
+            prev_message_id = await self.save_status_message(message, StatusType.BOT_STATUS)
             # Add update info after saving message to DB in case DB errors to prevent misleading info in message
             self.add_update_info(embed, utils.display_task_period(self.update_bot_status))
             await message.edit(embed=embed)
-            await self.try_start_bot_status_update()
+            await self.update_bot_status_tasks()
+            await message.add_reaction(utils.fail_emote)
+            # Update footer and reactions for prev message
+            if prev_message_id:
+                prev_message = await ctx.channel.fetch_message(prev_message_id)
+                embed = prev_message.embeds[0]
+                embed.set_footer(text="Updates stopped")
+                await prev_message.edit(embed=embed)
+                await prev_message.clear_reaction(utils.fail_emote)
+                await prev_message.clear_reaction(utils.refresh_emote)
 
     @cog_ext.cog_subcommand(base="check", name="refresh", guild_ids=guild_ids)
     async def refresh_status(self, ctx: SlashContext):
@@ -508,7 +637,10 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             channel_id=message.channel.id,
             status_type=status_type.value
         )
-        if not status_message:
+        prev_message_id = None
+        if status_message:
+            prev_message_id = status_message.message_id
+        else:
             # Can't use get_or_create since message_id is mandatory and I don't want to make it not mandatory
             status_message = StatusMessage(
                 guild_id=message.guild.id,
@@ -517,6 +649,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             )
         status_message.message_id = message.id
         await status_message.save()
+        return prev_message_id
 
     @staticmethod
     def ratelimit_check(cooldown, message):

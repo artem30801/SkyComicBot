@@ -14,6 +14,11 @@ from fuzzywuzzy import process
 time_format = '%d/%m/%Y, %H:%M:%S'
 embed_color = 0x72a3f2
 
+check_emote = "✅"
+fail_emote = "❌"
+info_emote = "ℹ"
+refresh_emote = "🔁"
+
 bot_manager_role = "skybox manager"
 stream_crew_role = "livestream crew"
 update_crew_role = "update crew"
