@@ -109,6 +109,8 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
 
     @commands.Cog.listener()
     async def on_message(self, message):
+        if not message.guild:
+            return 
         if message.author == message.guild.me:
             return
 
