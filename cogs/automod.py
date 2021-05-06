@@ -8,6 +8,7 @@ import unicodedata
 from enum import Enum
 from datetime import datetime, timedelta
 
+import tortoise.exceptions
 from dateutil import relativedelta
 from typing import Optional
 
@@ -178,14 +179,18 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
     @tasks.loop(minutes=5)
     async def update_bot_status(self):
         logger.info("Updating bot status messages")
-        embed = await self.make_bot_status_embed()
-        self.add_update_info(embed, utils.display_task_period(self.update_bot_status))
-        for message_id, channel_id in self.bot_status_messages.items():
-            channel = self.bot.get_channel(channel_id)
-            message = channel.get_partial_message(message_id)
-            await message.edit(embed=embed)
-            await message.clear_reaction(utils.refresh_emote)
-            await message.add_reaction(utils.fail_emote)
+        try:
+            embed = await self.make_bot_status_embed()
+            self.add_update_info(embed, utils.display_task_period(self.update_bot_status))
+            for message_id, channel_id in self.bot_status_messages.items():
+                channel = self.bot.get_channel(channel_id)
+                message = channel.get_partial_message(message_id)
+                await message.edit(embed=embed)
+                await message.clear_reaction(utils.refresh_emote)
+                await message.add_reaction(utils.fail_emote)
+        except tortoise.exceptions.OperationalError:
+            logger.warning("Skipped update due to DB error")
+            pass
 
     @tasks.loop()
     async def wait_for_bot_status_reactions(self):
@@ -214,19 +219,23 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
     @tasks.loop(hours=1)
     async def update_guilds_status(self):
         logger.info("Updating guild status messages")
-        guild_embeds = dict()
-        for message_id, channel_id in self.guild_status_messages.items():
-            channel = self.bot.get_channel(channel_id)
-            if channel.guild in guild_embeds:
-                embed = guild_embeds[channel.guild]
-            else:
-                embed = await self.make_guild_status_embed(channel.guild, self.checks)
-                self.add_update_info(embed, utils.display_task_period(self.update_guilds_status))
-                guild_embeds[channel.guild] = embed
-            message = channel.get_partial_message(message_id)
-            await message.edit(embed=embed)
-            await message.clear_reaction(utils.refresh_emote)
-            await message.add_reaction(utils.fail_emote)
+        try:
+            guild_embeds = dict()
+            for message_id, channel_id in self.guild_status_messages.items():
+                channel = self.bot.get_channel(channel_id)
+                if channel.guild in guild_embeds:
+                    embed = guild_embeds[channel.guild]
+                else:
+                    embed = await self.make_guild_status_embed(channel.guild, self.checks)
+                    self.add_update_info(embed, utils.display_task_period(self.update_guilds_status))
+                    guild_embeds[channel.guild] = embed
+                message = channel.get_partial_message(message_id)
+                await message.edit(embed=embed)
+                await message.clear_reaction(utils.refresh_emote)
+                await message.add_reaction(utils.fail_emote)
+        except tortoise.exceptions.OperationalError:
+            logger.warning("Skipped update due to DB error")
+            pass
 
     @tasks.loop()
     async def wait_for_guild_status_reactions(self):
