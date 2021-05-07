@@ -202,7 +202,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
 
         payload = await self.bot.wait_for('raw_reaction_add', check=is_stop_update_reaction)
         # Don't wait for the all reaction handling, start waiting for new reaction immediately
-        await asyncio.create_task(self.try_stop_status_update(payload, StatusType.BOT_STATUS))
+        asyncio.create_task(self.try_stop_status_update(payload, StatusType.BOT_STATUS))
 
     async def update_guilds_status_tasks(self):
         messages = StatusMessage.filter(status_type=StatusType.GUILD_STATUS.value)
@@ -247,7 +247,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
 
         payload = await self.bot.wait_for('raw_reaction_add', check=is_stop_update_reaction)
         # Don't wait for the all reaction handling, start waiting for new reaction immediately
-        await asyncio.create_task(self.try_stop_status_update(payload, StatusType.GUILD_STATUS))
+        asyncio.create_task(self.try_stop_status_update(payload, StatusType.GUILD_STATUS))
 
     async def try_stop_status_update(self, reaction: discord.RawReactionActionEvent, status_type: StatusType):
         # Predictively remove message from status messages, prevents additional attempts to stop updates for this message
@@ -579,6 +579,8 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         embed = await self.make_guild_status_embed(ctx.guild, checks)
         message = await ctx.send(embed=embed)
         if auto_update:
+            logger.info(f"{ctx.author} adding auto-updated check")
+
             prev_message_id = await self.save_status_message(message, StatusType.GUILD_STATUS)
             # Add update info after saving message to DB in case DB errors to prevent misleading info in message
             self.add_update_info(embed, utils.display_task_period(self.update_guilds_status))
@@ -614,6 +616,8 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         embed = await self.make_bot_status_embed()
         message = await ctx.send(embed=embed)
         if auto_update:
+            logger.info(f"{ctx.author} adding auto-updated check")
+
             prev_message_id = await self.save_status_message(message, StatusType.BOT_STATUS)
             # Add update info after saving message to DB in case DB errors to prevent misleading info in message
             self.add_update_info(embed, utils.display_task_period(self.update_bot_status))
