@@ -32,6 +32,7 @@ class StatusType(Enum):
 
 
 class StatusMessage(Model):
+    id = fields.IntField(pk=True)
     guild_id = fields.BigIntField()
     channel_id = fields.BigIntField()
     message_id = fields.BigIntField()
@@ -633,7 +634,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                 await prev_message.clear_reaction(utils.fail_emote)
                 await prev_message.clear_reaction(utils.refresh_emote)
 
-    @cog_ext.cog_subcommand(base="check", name="refresh", guild_ids=guild_ids)
+    @cog_ext.cog_subcommand(base="auto-updates", name="refresh", guild_ids=guild_ids)
     async def refresh_status(self, ctx: SlashContext):
         """Forcefully refreshes all status messages with auto-update"""
         await ctx.defer(hidden=True)
@@ -642,6 +643,46 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         if self.update_guilds_status.is_running():
             self.update_guilds_status.restart()
         await ctx.send("Refreshed!", hidden=True)
+
+    @cog_ext.cog_subcommand(base="auto-updates", name="list", guild_ids=guild_ids)
+    async def list_status(self, ctx: SlashContext):
+        """Lists all messages with auto-update in database"""
+        await ctx.defer(hidden=True)
+        messages = await StatusMessage.all()
+        if not messages:
+            await ctx.send("No messages with auto-update", hidden=True)
+            return
+
+        embed = discord.Embed()
+        embed.title = "Messages with auto-updates"
+
+        bot_status_messages = [message for message in messages if message.status_type == StatusType.BOT_STATUS.value]
+        messages_info = []
+        for message in bot_status_messages:
+            guild = self.bot.get_guild(message.guild_id)
+            channel = guild.get_channel(message.channel_id)
+            messages_info.append(f"[Message](https://discord.com/channels/{guild.id}/{channel.id}/{message.message_id}) "
+                                 f"in {channel.mention if ctx.guild == guild else '#' + channel.name} in {guild} (ID {message.id})")
+        if messages_info:
+            embed.add_field(name="Bot status messages", value="\n".join(messages_info), inline=False)
+
+        guilds_messages = {}
+        for message in messages:
+            if message.status_type != StatusType.GUILD_STATUS.value:
+                continue
+            if message.guild_id not in guilds_messages:
+                guilds_messages[message.guild_id] = []
+            guilds_messages[message.guild_id].append(message)
+        for guild_id, messages in guilds_messages.items():
+            guild = self.bot.get_guild(guild_id)
+            messages_info = []
+            for message in messages:
+                channel = guild.get_channel(message.channel_id)
+                messages_info.append(f"[Message](https://discord.com/channels/{guild.id}/{channel.id}/{message.message_id}) "
+                                     f"in {channel.mention if ctx.guild == guild else '#' + channel.name} (ID {message.id})")
+            embed.add_field(name=f"{guild} status messages", value="\n".join(messages_info), inline=False)
+
+        await ctx.send(embed=embed, hidden=True)
 
     @staticmethod
     async def save_status_message(message: discord.Message, status_type: StatusType):
