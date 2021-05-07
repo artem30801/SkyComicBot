@@ -4,6 +4,7 @@ import logging
 import math
 import psutil
 import os
+import re
 import unicodedata
 from enum import Enum
 from datetime import datetime, timedelta
@@ -311,7 +312,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                 await status_message.delete()
 
             logger.info(f"Stopped status updates for message {message.id}")
-            embed.set_footer(text="Updates stopped")
+            self.add_update_info(embed, None)
             await message.edit(embed=embed)
             await message.clear_reaction(utils.refresh_emote)
             return True
@@ -524,9 +525,12 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             embed.description = f"**{failed_count}/{len(checks)}** checks failed" if failed_count > 0 else "All checks passed!"
 
     @staticmethod
-    def add_update_info(embed: discord.Embed, update_period: str):
-        embed.timestamp = datetime.utcnow()
-        embed.set_footer(text=f"Updates every {update_period}. Press {utils.fail_emote} to stop updates")
+    def add_update_info(embed: discord.Embed, update_period: Optional[str]):
+        if update_period:
+            embed.timestamp = datetime.utcnow()
+            embed.set_footer(text=f"Updates every {update_period}. Press {utils.fail_emote} to stop updates")
+        else:
+            embed.set_footer(text="Updates stopped")
 
     @cog_ext.cog_subcommand(base="check", name="member",
                             options=[
@@ -592,7 +596,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             if prev_message_id:
                 prev_message = await ctx.channel.fetch_message(prev_message_id)
                 embed = prev_message.embeds[0]
-                embed.set_footer(text="Updates stopped")
+                self.add_update_info(embed, None)
                 await prev_message.edit(embed=embed)
                 await prev_message.clear_reaction(utils.fail_emote)
                 await prev_message.clear_reaction(utils.refresh_emote)
@@ -629,10 +633,68 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             if prev_message_id:
                 prev_message = await ctx.channel.fetch_message(prev_message_id)
                 embed = prev_message.embeds[0]
-                embed.set_footer(text="Updates stopped")
+                self.add_update_info(embed, None)
                 await prev_message.edit(embed=embed)
                 await prev_message.clear_reaction(utils.fail_emote)
                 await prev_message.clear_reaction(utils.refresh_emote)
+
+    @cog_ext.cog_subcommand(base="auto-updates", name="stop",
+                            options=[
+                                create_option(
+                                    name="id",
+                                    description="Message ID in the database",
+                                    option_type=int,
+                                    required=False
+                                ),
+                                create_option(
+                                    name="link",
+                                    description="Link to the update message",
+                                    option_type=str,
+                                    required=False
+                                ),
+                            ],
+                            connector={
+                                "id": "db_id",
+                                "link": "msg_link",
+                            },
+                            guild_ids=guild_ids)
+    async def stop_status(self, ctx: SlashContext, db_id: int = None, msg_link: str = None):
+        """Stops update for the status message by DB id or message link"""
+        await ctx.defer(hidden=True)
+        logger.info(f"{ctx.author} trying to stop status update by id '{db_id}' or link '{msg_link}'")
+        if db_id is None and msg_link is None:
+            raise commands.BadArgument("Please provide message link or ID")
+
+        db_message = None
+        if db_id is not None:
+            db_message = await StatusMessage.get_or_none(id=db_id)
+            if db_message is None:
+                raise commands.BadArgument(f"There is no status message with id {db_id}")
+
+        if not db_message and msg_link:
+            # TODO: precompile match on start
+            match = re.match(
+                pattern=r"(\A|\W)https://discord.com/channels/(?P<guild_id>\d+)/(?P<channel_id>\d+)/(?P<msg_id>\d+)(\Z|\W)",
+                string=msg_link
+            )
+            if not match:
+                raise commands.BadArgument(f"Looks like '{msg_link}' is not a link to discord message")
+            ids = match.groupdict()
+            db_message = await StatusMessage.get_or_none(guild_id=ids['guild_id'], channel_id=ids['channel_id'], message_id=ids['msg_id'])
+            if db_message is None:
+                raise commands.BadArgument("Looks like linked message is not a status message with auto-updates")
+
+        guild = self.bot.get_guild(db_message.guild_id)
+        channel = guild.get_channel(db_message.channel_id)
+        message = await channel.fetch_message(db_message.message_id)
+        embed = message.embeds[0]
+        self.add_update_info(embed, None)
+        await db_message.delete()
+        await message.edit(embed=embed)
+        await message.clear_reaction(utils.fail_emote)
+        await message.clear_reaction(utils.refresh_emote)
+
+        await ctx.send("Removed message from auto-updates", hidden=True)
 
     @cog_ext.cog_subcommand(base="auto-updates", name="refresh", guild_ids=guild_ids)
     async def refresh_status(self, ctx: SlashContext):
