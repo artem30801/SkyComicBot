@@ -191,7 +191,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                 await message.clear_reaction(utils.refresh_emote)
                 await message.add_reaction(utils.fail_emote)
         except tortoise.exceptions.OperationalError:
-            logger.warning("Skipped update due to DB error")
+            logger.warning("Skipped bot status update due to DB error")
             pass
 
     @tasks.loop()
@@ -236,7 +236,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                 await message.clear_reaction(utils.refresh_emote)
                 await message.add_reaction(utils.fail_emote)
         except tortoise.exceptions.OperationalError:
-            logger.warning("Skipped update due to DB error")
+            logger.warning("Skipped guilds status update due to DB error")
             pass
 
     @tasks.loop()
@@ -261,8 +261,8 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         channel = guild.get_channel(reaction.channel_id)
         message = channel.get_partial_message(reaction.message_id)
 
-        logger.info(f"Trying to stop {'bot' if status_type == StatusType.BOT_STATUS else 'guild'} status updates in {channel} in {guild}. "
-                    f"Message ID: {message.id}")
+        logger.info(f"{reaction.member} trying to stop {'bot' if status_type == StatusType.BOT_STATUS else 'guild'} status updates "
+                    f"in {channel} in {guild}. Message ID: {message.id}")
 
         try:
             ctx = FakeCheckContext(guild=guild, channel=channel, author=reaction.member, bot=self.bot)
