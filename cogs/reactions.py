@@ -23,15 +23,15 @@ def contains_word(message: str, word: str) -> bool:
 
 class Reactions(commands.Cog):
     """Automatic context reactions"""
-    
-    real_life_channel_id = 689301702096191537
-    updates_channel_id = 329098775228448769
 
     def __init__(self, bot):
         self.bot = bot
         self._reactions = {("telling", ): self.telling,
                            ("wrong layer", "wrong\\s[\\w]+\\slayer"): self.wrong_layer,
-                           ("hug", "hugs"): self.hug}
+                           ("hug", "hugs"): self.hug,
+                           ("suselle", ): self.suselle,
+                           ("soriel", ): self.soriel,
+                           }
 
     @commands.Cog.listener()
     async def on_message(self, message: Message):
@@ -77,6 +77,26 @@ class Reactions(commands.Cog):
             await message.add_reaction(emoji)
         else:
             logger.warning("Failed to get hug emoji!")
+
+    async def suselle(self, message):
+        collection = self.bot.emojis
+        susie = discord.utils.get(collection, name='PT_armless_babies')
+        if not susie:
+            logger.warning("Failed to get Susie emoji")
+            return
+        noelle = discord.utils.get(collection, name='PT_excited_noelle')
+        if not noelle:
+            logger.warning("Failed to get Noelle emoji")
+            return
+        await message.add_reaction(susie)
+        await message.add_reaction('🇽')  # Note! That's 🇽, not x
+        await message.add_reaction(noelle)
+
+    @staticmethod
+    async def soriel(message):
+        await message.add_reaction('🐐')
+        await message.add_reaction('🇽')  # Note! That's 🇽, not x
+        await message.add_reaction('💀')
     
     @staticmethod
     def get_update_message(update_role, update_channel) -> str:
