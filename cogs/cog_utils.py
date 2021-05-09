@@ -3,6 +3,7 @@ import os
 
 import asyncio
 import discord
+import tortoise.exceptions
 from discord import TextChannel, Member, Role
 from discord.ext import commands
 
@@ -138,7 +139,7 @@ class BackoffStrategy:
         raise last_exception
 
 
-default_backoff = BackoffStrategy(5, 0.5, 2, Exception)
+default_backoff = BackoffStrategy(5, 0.5, 2, tortoise.exceptions.OperationalError)
 
 
 async def run(cmd):
