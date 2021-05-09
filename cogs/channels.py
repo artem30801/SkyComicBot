@@ -71,8 +71,8 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
         await self.update_channels()
 
     async def update_channels(self):
-        self.no_react_channels = await self.get_channels(channel_type=ChannelType.NO_REACTIONS.value)
-        self.monitor_channels = await self.get_channels(channel_type=ChannelType.UPDATE_MONITOR.value)
+        self.no_react_channels = await self.get_channels(channel_type=ChannelType.NO_REACTIONS.value, ignore_readonly_channels=False)
+        self.monitor_channels = await self.get_channels(channel_type=ChannelType.UPDATE_MONITOR.value, ignore_readonly_channels=False)
 
     async def delete_all_notfound(self):
         async for ch_setup in ChannelSetup.all():
@@ -88,10 +88,12 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
                                   )
         logger.warning(f"Deleted channel setup from {stack or '(deleted guild)'} as channel was deleted")
 
-    async def get_channels(self, guild: discord.Guild = None, channel_type: int = None) -> [discord.TextChannel]:
-        return await utils.default_backoff.run_task(self._get_channels, guild, channel_type)
+    async def get_channels(self, guild: discord.Guild = None, channel_type: int = None,
+                           ignore_readonly_channels: bool = True) -> [discord.TextChannel]:
+        return await utils.default_backoff.run_task(self._get_channels, guild, channel_type, ignore_readonly_channels)
 
-    async def _get_channels(self, guild: discord.Guild = None, channel_type: int = None) -> [discord.TextChannel]:
+    async def _get_channels(self, guild: discord.Guild = None, channel_type: int = None,
+                            ignore_readonly_channels: bool = True) -> [discord.TextChannel]:
         setups = ChannelSetup.all()
         if channel_type is not None:
             setups = setups.filter(channel_type=channel_type)
@@ -103,7 +105,7 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
             channel = self.bot.get_channel(channel_setup.channel_id)
             if channel is None:
                 await self.delete_notfound(channel_setup)
-            elif utils.can_bot_respond(channel.guild.me, channel):
+            elif utils.can_bot_respond(channel.guild.me, channel) or not ignore_readonly_channels:
                 channels.append(channel)
             else:
                 logger.info(f"Bot can't send messages to #{channel.name} channel at {channel.guild.name}!")
