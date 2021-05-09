@@ -2,6 +2,8 @@ import asyncio
 import collections
 import logging
 import math
+import traceback
+
 import psutil
 import os
 import re
@@ -9,7 +11,6 @@ import unicodedata
 from enum import Enum
 from datetime import datetime, timedelta
 
-import tortoise.exceptions
 from dateutil import relativedelta
 from typing import Optional
 
@@ -101,6 +102,11 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         self.guild_status_messages = {}
         self.messages_to_stop = set()
 
+        self.update_bot_status_fail_count = 0
+        self.wait_for_bot_status_reactions_fail_count = 0
+        self.update_guilds_status_fail_count = 0
+        self.wait_for_guild_status_reactions_fail_count = 0
+
         self.checks = {"blank nick": self.check_nick_blank,
                        "fresh account": self.check_fresh_account,
                        "recently joined": self.check_recently_joined,
@@ -171,28 +177,39 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         messages = [message async for message in messages if message.message_id not in self.messages_to_stop]
         self.bot_status_messages = {message.message_id: message.channel_id for message in messages}
 
-        if self.bot_status_messages and not self.update_bot_status.is_running():
-            self.update_bot_status.start()
-            self.wait_for_bot_status_reactions.start()
-        elif not self.bot_status_messages and self.update_bot_status.is_running():
-            self.update_bot_status.stop()
-            self.wait_for_bot_status_reactions.stop()
+        if self.bot_status_messages:
+            utils.ensure_tasks_running([self.update_bot_status, self.wait_for_bot_status_reactions])
+        else:
+            utils.ensure_tasks_stopped([self.update_bot_status, self.wait_for_bot_status_reactions])
 
     @tasks.loop(minutes=5)
     async def update_bot_status(self):
         logger.info("Updating bot status messages")
-        try:
-            embed = await self.make_bot_status_embed()
-            self.add_update_info(embed, utils.display_task_period(self.update_bot_status))
-            for message_id, channel_id in self.bot_status_messages.items():
-                channel = self.bot.get_channel(channel_id)
-                message = channel.get_partial_message(message_id)
-                await message.edit(embed=embed)
-                await message.clear_reaction(utils.refresh_emote)
-                await message.add_reaction(utils.fail_emote)
-        except tortoise.exceptions.OperationalError:
-            logger.warning("Skipped bot status update due to DB error")
-            pass
+
+        embed = await self.make_bot_status_embed()
+        self.add_update_info(embed, utils.display_task_period(self.update_bot_status))
+        for message_id, channel_id in self.bot_status_messages.items():
+            channel = self.bot.get_channel(channel_id)
+            message = channel.get_partial_message(message_id)
+            await message.edit(embed=embed)
+            await message.clear_reaction(utils.refresh_emote)
+            await message.add_reaction(utils.fail_emote)
+
+        self.update_bot_status_fail_count = 0
+
+    @update_bot_status.error
+    async def update_bot_status_error(self, exception):
+        logger.error(f"Caught exception while updating bot status:\n"
+                     f"{traceback.format_exc()}")
+        if self.update_bot_status_fail_count < utils.default_backoff.max_attempts_amount:
+            delay = utils.default_backoff.get_delay_for_attempt(self.update_bot_status_fail_count)
+            logger.info(f"Waiting for {delay} seconds before restart")
+            await asyncio.sleep(delay)
+
+            self.update_bot_status_fail_count += 1
+            self.update_bot_status.restart()
+        else:
+            logger.warning("Too many fails, stopping restart attempts")
 
     @tasks.loop()
     async def wait_for_bot_status_reactions(self):
@@ -205,39 +222,65 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         payload = await self.bot.wait_for('raw_reaction_add', check=is_stop_update_reaction)
         # Don't wait for the all reaction handling, start waiting for new reaction immediately
         asyncio.create_task(self.try_stop_status_update(payload, StatusType.BOT_STATUS))
+        self.wait_for_bot_status_reactions_fail_count = 0
+
+    @wait_for_bot_status_reactions.error
+    async def wait_for_bot_status_reactions_error(self, exception):
+        logger.error(f"Caught exception while waiting for bot reactions:\n"
+                     f"{traceback.format_exc()}")
+        if self.wait_for_bot_status_reactions_fail_count < utils.default_backoff.max_attempts_amount:
+            delay = utils.default_backoff.get_delay_for_attempt(self.wait_for_bot_status_reactions_fail_count)
+            logger.info(f"Waiting for {delay} seconds before restart")
+            await asyncio.sleep(delay)
+
+            self.wait_for_bot_status_reactions_fail_count += 1
+            self.wait_for_bot_status_reactions.restart()
+        else:
+            logger.warning("Too many fails, stopping restart attempts")
 
     async def update_guilds_status_tasks(self):
         messages = StatusMessage.filter(status_type=StatusType.GUILD_STATUS.value)
         messages = [message async for message in messages if message.message_id not in self.messages_to_stop]
         self.guild_status_messages = {message.message_id: message.channel_id for message in messages}
 
-        if self.guild_status_messages and not self.update_guilds_status.is_running():
-            self.update_guilds_status.start()
-            self.wait_for_guild_status_reactions.start()
-        elif not self.guild_status_messages and self.update_guilds_status.is_running():
-            self.update_guilds_status.stop()
-            self.wait_for_guild_status_reactions.stop()
+        if self.guild_status_messages:
+            utils.ensure_tasks_running([self.update_guilds_status, self.wait_for_guild_status_reactions])
+        else:
+            utils.ensure_tasks_stopped([self.update_guilds_status, self.wait_for_guild_status_reactions])
 
     @tasks.loop(hours=1)
     async def update_guilds_status(self):
         logger.info("Updating guild status messages")
-        try:
-            guild_embeds = dict()
-            for message_id, channel_id in self.guild_status_messages.items():
-                channel = self.bot.get_channel(channel_id)
-                if channel.guild in guild_embeds:
-                    embed = guild_embeds[channel.guild]
-                else:
-                    embed = await self.make_guild_status_embed(channel.guild, self.checks)
-                    self.add_update_info(embed, utils.display_task_period(self.update_guilds_status))
-                    guild_embeds[channel.guild] = embed
-                message = channel.get_partial_message(message_id)
-                await message.edit(embed=embed)
-                await message.clear_reaction(utils.refresh_emote)
-                await message.add_reaction(utils.fail_emote)
-        except tortoise.exceptions.OperationalError:
-            logger.warning("Skipped guilds status update due to DB error")
-            pass
+
+        guild_embeds = dict()
+        for message_id, channel_id in self.guild_status_messages.items():
+            channel = self.bot.get_channel(channel_id)
+            if channel.guild in guild_embeds:
+                embed = guild_embeds[channel.guild]
+            else:
+                embed = await self.make_guild_status_embed(channel.guild, self.checks)
+                self.add_update_info(embed, utils.display_task_period(self.update_guilds_status))
+                guild_embeds[channel.guild] = embed
+            message = channel.get_partial_message(message_id)
+            await message.edit(embed=embed)
+            await message.clear_reaction(utils.refresh_emote)
+            await message.add_reaction(utils.fail_emote)
+
+        self.update_guilds_status_fail_count = 0
+
+    @update_guilds_status.error
+    async def update_guilds_status_error(self, exception):
+        logger.error(f"Caught exception while updating guilds status:\n"
+                     f"{traceback.format_exc()}")
+        if self.update_guilds_status_fail_count < utils.default_backoff.max_attempts_amount:
+            delay = utils.default_backoff.get_delay_for_attempt(self.update_guilds_status_fail_count)
+            logger.info(f"Waiting for {delay} seconds before restart")
+            await asyncio.sleep(delay)
+
+            self.update_guilds_status_fail_count += 1
+            self.update_guilds_status.restart()
+        else:
+            logger.warning("Too many fails, stopping restart attempts")
 
     @tasks.loop()
     async def wait_for_guild_status_reactions(self):
@@ -250,6 +293,21 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         payload = await self.bot.wait_for('raw_reaction_add', check=is_stop_update_reaction)
         # Don't wait for the all reaction handling, start waiting for new reaction immediately
         asyncio.create_task(self.try_stop_status_update(payload, StatusType.GUILD_STATUS))
+        self.wait_for_guild_status_reactions_fail_count = 0
+
+    @wait_for_guild_status_reactions.error
+    async def wait_for_guild_status_reactions_error(self, exception):
+        logger.error(f"Caught exception while waiting for guilds reactions:\n"
+                     f"{traceback.format_exc()}")
+        if self.wait_for_guild_status_reactions_fail_count < utils.default_backoff.max_attempts_amount:
+            delay = utils.default_backoff.get_delay_for_attempt(self.wait_for_guild_status_reactions_fail_count)
+            logger.info(f"Waiting for {delay} seconds before restart")
+            await asyncio.sleep(delay)
+
+            self.wait_for_guild_status_reactions_fail_count += 1
+            self.wait_for_guild_status_reactions.restart()
+        else:
+            logger.warning("Too many fails, stopping restart attempts")
 
     async def try_stop_status_update(self, reaction: discord.RawReactionActionEvent, status_type: StatusType):
         # Predictively remove message from status messages, prevents additional attempts to stop updates for this message

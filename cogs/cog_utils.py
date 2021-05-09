@@ -109,6 +109,38 @@ class DBLogger(logging.getLoggerClass()):
             self._log(important_log_level, msg, args, **kwargs)
 
 
+class BackoffStrategy:
+
+    def __init__(self, max_attempts_amount, base_delay, exponent_base, fail_exception_class):
+        self.max_attempts_amount = max_attempts_amount
+        self.base_delay = base_delay
+        self.exponent_base = exponent_base
+        self.exception_class = fail_exception_class
+
+    def attempts(self):
+        attempts_amount = 0
+        while self.max_attempts_amount <= 0 or attempts_amount < self.max_attempts_amount:
+            yield self.get_delay_for_attempt(attempts_amount)
+            attempts_amount += 1
+
+    def get_delay_for_attempt(self, attempt):
+        return self.base_delay * pow(self.exponent_base, attempt)
+
+    async def run_task(self, task, *args, **kwargs):
+        last_exception = None
+        for delay in self.attempts():
+            try:
+                return await task(*args, **kwargs)
+            except self.exception_class as exception:
+                last_exception = exception
+                await asyncio.sleep(delay)
+        # Raise last exception if all attempts failed
+        raise last_exception
+
+
+default_backoff = BackoffStrategy(5, 0.5, 2, Exception)
+
+
 async def run(cmd):
     proc = await asyncio.create_subprocess_shell(
         cmd,
@@ -222,6 +254,22 @@ def format_size(size, accuracy=1):
         if size < radix or num == len(units) - 1:
             return f"{size:.{accuracy}f} {unit}"
         size /= radix
+
+
+def ensure_tasks_running(tasks):
+    for task in tasks:
+        if task.is_running():
+            return
+        if task.failed():
+            task.restart()
+        else:
+            task.start()
+
+
+def ensure_tasks_stopped(tasks):
+    for task in tasks:
+        if task.is_running():
+            task.stop()
 
 
 def bot_embed(bot):
