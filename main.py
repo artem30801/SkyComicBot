@@ -17,8 +17,6 @@ from cogs.logging_utils import BufferingSocketHandler
 
 version = "3.7.1"  # bump this with update releases
 
-nest_asyncio.apply()
-
 
 # https://discordapp.com/oauth2/authorize?&client_id=804306819660644372&scope=applications.commands%20bot&permissions=1446509632
 # scope=applications.commands%20bot
@@ -112,4 +110,5 @@ async def main():
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
+    nest_asyncio.apply(loop)
     loop.run_until_complete(main())
