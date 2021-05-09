@@ -804,7 +804,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             guild = self.bot.get_guild(message.guild_id)
             channel = guild.get_channel(message.channel_id)
             messages_info.append(f"[Message](https://discord.com/channels/{guild.id}/{channel.id}/{message.message_id}) "
-                                 f"in {channel.mention if ctx.guild == guild else '#' + channel.name} in {guild} (ID {message.id})")
+                                 f"in {channel.mention} in {guild} (ID {message.id})")
         if messages_info:
             embed.add_field(name="Bot status messages", value="\n".join(messages_info), inline=False)
 
@@ -821,7 +821,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             for message in messages:
                 channel = guild.get_channel(message.channel_id)
                 messages_info.append(f"[Message](https://discord.com/channels/{guild.id}/{channel.id}/{message.message_id}) "
-                                     f"in {channel.mention if ctx.guild == guild else '#' + channel.name} (ID {message.id})")
+                                     f"in {channel.mention} (ID {message.id})")
             embed.add_field(name=f"{guild} status messages", value="\n".join(messages_info), inline=False)
 
         await ctx.send(embed=embed, hidden=True)
