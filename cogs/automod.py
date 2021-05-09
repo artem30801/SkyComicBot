@@ -471,6 +471,8 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                             "Latency": f"{math.ceil(self.bot.latency * 100)} ms"
                         }))
 
+        embed.set_footer(text="Yours truly!",
+                         icon_url=self.bot.user.avatar_url if self.bot.user else discord.embeds.EmptyEmbed)
         return embed
 
     async def make_guild_status_embed(self, guild: discord.Guild, checks: dict) -> discord.Embed:
@@ -663,7 +665,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             self.update_message_footer_text(message.id, embed, StatusType.GUILD_STATUS)
             await message.edit(embed=embed)
             await self.ensure_correct_message_reactions(message, StatusType.GUILD_STATUS)
-            
+
             # Update footer and reactions for prev message
             if prev_message_id:
                 prev_message = await ctx.channel.fetch_message(prev_message_id)
