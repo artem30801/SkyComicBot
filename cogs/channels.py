@@ -104,7 +104,7 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
             channel = self.bot.get_channel(channel_setup.channel_id)
             if channel is None:
                 await self.delete_notfound(channel_setup)
-            elif utils.can_bot_respond(channel.guild.me, channel) or ChannelType(channel_setup.channel_type) in self.readonly_channel_types:
+            elif utils.can_bot_respond(channel) or ChannelType(channel_setup.channel_type) in self.readonly_channel_types:
                 channels.append(channel)
             else:
                 logger.info(f"Bot can't send messages to #{channel.name} channel at {channel.guild.name}!")
@@ -206,7 +206,7 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
         type_string = "all types" if ChannelType.is_default_index(type_index) else f"type '{ChannelType(type_index)}'"
         logger.db(f"'{ctx.author}' trying to remove {type_string} from '{channel}' in '{ctx.guild}'")
 
-        channel_setups = await utils.default_backoff.run_task(ChannelSetup.filter,guild_id=ctx.guild_id, channel_id=channel.id)
+        channel_setups = await utils.default_backoff.run_task(ChannelSetup.filter, guild_id=ctx.guild_id, channel_id=channel.id)
         if not channel_setups:
             await ctx.send(f"{channel.mention} don't have any type set", hidden=True)
             return

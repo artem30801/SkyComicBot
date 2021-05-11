@@ -4,7 +4,7 @@ import os
 import asyncio
 import discord
 import tortoise.exceptions
-from discord import TextChannel, Member, Role
+from discord import Guild, TextChannel, Member, Role
 from discord.ext import commands
 
 from discord_slash import SlashContext
@@ -186,13 +186,17 @@ def url_hostname(url):
     return url.split("//")[-1].split("/")[0].split('?')[0]
 
 
-def can_bot_respond(bot: Member, channel: TextChannel) -> bool:
+def can_bot_respond(channel: TextChannel) -> bool:
     """Checks, can a bot send messages to this channel"""
-    if bot is None or channel is None:
-        return False
-
+    bot = channel.guild.me
     permissions = channel.permissions_for(bot)
     return permissions.send_messages
+
+
+def can_bot_manage_messages(channel: TextChannel):
+    bot = channel.guild.me
+    permissions = channel.permissions_for(bot)
+    return permissions.manage_messages
 
 
 def can_manage_role(bot: Member, role: Role) -> bool:
