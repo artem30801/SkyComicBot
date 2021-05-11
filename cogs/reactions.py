@@ -26,11 +26,13 @@ class Reactions(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
-        self._reactions = {("telling", ): self.telling,
+        self._reactions = {("telling",): self.telling,
                            ("wrong layer", "wrong\\s[\\w]+\\slayer"): self.wrong_layer,
                            ("hug", "hugs"): self.hug,
-                           ("suselle", ): self.suselle,
-                           ("soriel", ): self.soriel,
+                           ("suselle",): self.suselle,
+                           ("kruselle",): self.kruselle,
+                           ("shebus", "phanti",): self.phoebus_shanti,
+                           ("soriel",): self.soriel,
                            }
 
     @commands.Cog.listener()
@@ -93,6 +95,20 @@ class Reactions(commands.Cog):
                               self.get_emoji("PT_armless_babies"),
                               "🇽",  # Note! That's 🇽, not x
                               self.get_emoji("PT_excited_noelle")
+                              )
+
+    async def kruselle(self, message):
+        await self.add_emojis(message,
+                              self.get_emoji("PT_armless_babies"),
+                              "🇽",  # Note! That's 🇽, not x
+                              self.get_emoji("PT_kris_shrug")
+                              )
+
+    async def phoebus_shanti(self, message):
+        await self.add_emojis(message,
+                              self.get_emoji("shantisdone"),
+                              "🇽",  # Note! That's 🇽, not x
+                              self.get_emoji("ShantiWTF")
                               )
 
     async def soriel(self, message):
