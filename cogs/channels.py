@@ -151,6 +151,9 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
     async def set_type(self, ctx: SlashContext, type_index: int, channel: discord.TextChannel = None):
         """Sets type for the selected channel (or current one by default)"""
         await ctx.defer(hidden=True)
+        if channel and not isinstance(channel, discord.TextChannel):
+            raise commands.BadArgument(f"Failed to get channel '{channel}' info!")
+
         channel = channel or ctx.channel
         channel_type_name = ChannelType(type_index).description
         channel_id = channel.id
@@ -195,6 +198,9 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
     @has_bot_perms()
     async def clear_type(self, ctx: SlashContext, type_index: int, channel: discord.TextChannel = None):
         """Removes type from the selected channel (or this one by default)"""
+        if channel and not isinstance(channel, discord.TextChannel):
+            raise commands.BadArgument(f"Failed to get channel '{channel}' info!")
+
         await ctx.defer(hidden=True)
         channel = channel or ctx.channel
         type_string = "all types" if ChannelType.is_default_index(type_index) else f"type '{ChannelType(type_index)}'"
@@ -238,6 +244,9 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
     @has_server_perms()
     async def list_types(self, ctx: SlashContext, channel: discord.TextChannel = None):
         """Lists all types of the selected channel (or this one by default)"""
+        if channel and not isinstance(channel, discord.TextChannel):
+            raise commands.BadArgument(f"Failed to get channel '{channel}' info!")
+
         await ctx.defer(hidden=True)
         channel = channel or ctx.channel
         channel_id = channel.id
