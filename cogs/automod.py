@@ -134,7 +134,8 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         if message.author == message.guild.me:
             return
 
-        await self.check_spam(message)
+        ctx = FakeCheckContext(message.guild, message.channel, message.guild.me, self.bot)
+        await self.check_spam(ctx, message)
 
     @commands.Cog.listener()
     async def on_member_join(self, member):
@@ -579,13 +580,26 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
 
     async def ensure_correct_message_reactions(self, message: Union[discord.Message, discord.PartialMessage], message_type: StatusType):
         """Makes sure that status message has correct reactions for the current state"""
-        await message.clear_reactions()
+        ctx = FakeCheckContext(message.guild, message.channel, message.guild.me, self.bot)
+        can_manage_reactions = await utils.has_permissions(ctx, manage_messages=True)
+
+        if can_manage_reactions:
+            await message.clear_reactions()
+
         if message.id in self.messages_to_stop:
+            if not can_manage_reactions:
+                await message.remove_reaction(utils.fail_emote, self.bot.user)
+
             await message.add_reaction(utils.refresh_emote)
         else:
+            if not can_manage_reactions:
+                await message.remove_reaction(utils.refresh_emote, self.bot.user)
+
             status_messages = self.bot_status_messages if message_type == StatusType.BOT_STATUS else self.guild_status_messages
             if message.id in status_messages:
                 await message.add_reaction(utils.fail_emote)
+            else:
+                await message.remove_reaction(utils.fail_emote, self.bot.user)
 
     async def update_status_messages(self, status_type: StatusType):
         messages = await utils.default_backoff.run_task(StatusMessage.filter, status_type=status_type.value)
@@ -854,11 +868,11 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         bucket = cooldown.get_bucket(message)
         return bucket.update_rate_limit()
 
-    async def _purge(self, message):
+    async def _purge(self, ctx, message):
         def same_author(m):
             return m.author == message.author
 
-        if commands.has_permissions(manage_messages=True):
+        if await utils.has_permissions(ctx, manage_messages=True):
             try:
                 deleted = await message.channel.purge(  # limit=self.rate,
                     after=message.created_at - timedelta(seconds=self.per),
@@ -870,7 +884,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             return deleted
         return None
 
-    async def check_spam(self, message):
+    async def check_spam(self, ctx, message):
         retry_after = self.ratelimit_check(self._spam_cooldown, message)
         if retry_after is None:
             return
@@ -880,10 +894,10 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         deleted = None
 
         if report_after is None:
-            deleted = await self._purge(message)
+            deleted = await self._purge(ctx, message)
             await self.report_spam(message, deleted)
         else:
-            if commands.has_permissions(manage_messages=True):
+            if await utils.has_permissions(ctx, manage_messages=True):
                 try:
                     await message.delete()
                 except discord.NotFound:
@@ -903,10 +917,13 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
 
         if report_after is None:
             await asyncio.sleep(self.per + 1)
-            await self._purge(message)
+            await self._purge(ctx, message)
 
-    async def report_spam(self, message, deleted=()):
+    async def report_spam(self, message, deleted):
         logger.important(f"Detected spam by {self.format_caller(message)}!")
+
+        if deleted is None:
+            deleted = ()
 
         member = message.author
         embed = discord.Embed()

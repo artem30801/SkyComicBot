@@ -257,6 +257,14 @@ def format_size(size, accuracy=1):
         size /= radix
 
 
+async def has_permissions(ctx, **perms):
+    try:
+        await commands.bot_has_permissions(**perms).predicate(ctx)
+        return True
+    except commands.BotMissingPermissions:
+        return False
+
+
 def ensure_tasks_running(tasks):
     for task in tasks:
         if task.is_running():
