@@ -48,7 +48,10 @@ class Reactions(commands.Cog):
         for keys, react in self._reactions.items():
             if any(contains_word(message.content, key) for key in keys):
                 logger.debug(f"Reacted to '{message.content}' message (contains {keys})")
-                await react(message)
+                try:
+                    await react(message)
+                except commands.EmojiNotFound as e:
+                    logger.warning(e)
                 break
 
     async def notify_update(self, message):
@@ -70,34 +73,33 @@ class Reactions(commands.Cog):
         await send_file(message.channel, abs_join(self.bot.current_dir, "reactions", "wrong_layer.gif"),
                         "wronglayersong.gif")
 
-    async def hug(self, message):
-        collection = self.bot.emojis
-        emoji = discord.utils.get(collection, name='griffin_hug')
+    def get_emoji(self, emoji_name):
+        # emoji = commands.EmojiConverter().convert(ctx, emoji_name)
+        emoji = discord.utils.get(self.bot.emojis, name=emoji_name)
         if emoji:
-            await message.add_reaction(emoji)
+            return emoji
         else:
-            logger.warning("Failed to get hug emoji!")
+            raise commands.EmojiNotFound(emoji_name)
+
+    async def add_emojis(self, message, *emojis):
+        for emoji in emojis:
+            await message.add_reaction(emoji)
+
+    async def hug(self, message):
+        await message.add_reaction(self.get_emoji("griffin_hug"))
 
     async def suselle(self, message):
-        collection = self.bot.emojis
-        susie = discord.utils.get(collection, name='PT_armless_babies')
-        if not susie:
-            logger.warning("Failed to get Susie emoji")
-            return
-        noelle = discord.utils.get(collection, name='PT_excited_noelle')
-        if not noelle:
-            logger.warning("Failed to get Noelle emoji")
-            return
-        await message.add_reaction(susie)
-        await message.add_reaction('🇽')  # Note! That's 🇽, not x
-        await message.add_reaction(noelle)
+        await self.add_emojis(message,
+                              self.get_emoji("PT_armless_babies"),
+                              "🇽",  # Note! That's 🇽, not x
+                              self.get_emoji("PT_excited_noelle")
+                              )
 
-    @staticmethod
-    async def soriel(message):
-        await message.add_reaction('🐐')
-        await message.add_reaction('🇽')  # Note! That's 🇽, not x
-        await message.add_reaction('💀')
-    
+    async def soriel(self, message):
+        await self.add_emojis(message,
+                              "🐐", "🇽", "💀"  # Note! That's 🇽, not x
+                              )
+
     @staticmethod
     def get_update_message(update_role, update_channel) -> str:
         notification = [
