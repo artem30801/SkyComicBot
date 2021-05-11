@@ -459,6 +459,8 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         """Assign specified role to you or specified member"""
         if member and not isinstance(member, discord.Member):
             raise commands.BadArgument(f"Failed to get member '{member}' info!")
+        if not isinstance(role, discord.Role):
+            raise commands.BadArgument(f"Failed to get role '{role}' info!")
 
         await ctx.defer(hidden=True)
         member = member or ctx.author
@@ -521,6 +523,8 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         """Remove specified role from you or specified member"""
         if member and not isinstance(member, discord.Member):
             raise commands.BadArgument(f"Failed to get member '{member}' info!")
+        if not isinstance(role, discord.Role):
+            raise commands.BadArgument(f"Failed to get role '{role}' info!")
 
         member = member or ctx.author
         logger.info(f"{self.format_caller(ctx)} trying to remove role '{role}' from {member}")
@@ -576,6 +580,9 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
     @has_bot_perms()
     async def role_snapshot_role(self, ctx: SlashContext, role: discord.Role, group: Optional[int] = None):
         """Adds existing server role to the internal database (if bot can manage this role)"""
+        if not isinstance(role, discord.Role):
+            raise commands.BadArgument(f"Failed to get role '{role}' info!")
+
         logger.db(f"{self.format_caller(ctx)} trying to snapshot role '{role}' from '{ctx.guild}'")
         # await ctx.defer(hidden=True)
         if group:
