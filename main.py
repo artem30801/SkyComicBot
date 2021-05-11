@@ -92,12 +92,12 @@ async def main():
     logging.getLogger("PIL").setLevel(logging.ERROR)
 
     initial_extensions = ["cogs.errors", "cogs.permissions", "cogs.service", "cogs.channels",
-                          "cogs.greetings", "cogs.automod", "cogs.converters",
+                          "cogs.greetings", "cogs.automod", "cogs.timezones",
                           "cogs.reactions", "cogs.emotes", "cogs.roles"]
 
     bot.load_initial_extensions(initial_extensions)
 
-    models = ["cogs.permissions", "cogs.roles", "cogs.converters", "cogs.channels", "cogs.automod", ]  # "cogs.comics",
+    models = ["cogs.permissions", "cogs.roles", "cogs.timezones", "cogs.channels", "cogs.automod", ]  # "cogs.comics",
     try:
         await Tortoise.init(db_url=bot.config["auth"]["db_url"],
                             modules={"models": models})
