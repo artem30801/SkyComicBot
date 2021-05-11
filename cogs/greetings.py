@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 import io
 import aiohttp
 import discord
-from discord.ext import tasks
+from discord.ext import tasks, commands
 from discord_slash import cog_ext, SlashContext
 from discord_slash.utils.manage_commands import create_option, create_choice
 
@@ -184,6 +184,9 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
         guild_ids=guild_ids)
     async def hello(self, ctx: SlashContext, member: discord.Member = None):
         """Says hello to you or mentioned member."""
+        if member and not isinstance(member, discord.Member):
+            raise commands.BadArgument(f"Failed to get member '{member}' info!")
+
         member = member or ctx.author
         await ctx.send(self.get_greeting(member))
 

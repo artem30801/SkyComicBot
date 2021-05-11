@@ -85,6 +85,11 @@ class Conversions(utils.AutoLogCog):
                       timezone_from: str = None, member_from: discord.Member = None,
                       timezone_to: str = None, member_to: discord.Member = None):
         """Converts time from one timezone to another"""
+        if member_from and not isinstance(member_from, discord.Member):
+            raise commands.BadArgument(f"Failed to get member '{member_from}' info!")
+        if member_to and not isinstance(member_to, discord.Member):
+            raise commands.BadArgument(f"Failed to get member '{member_to}' info!")
+
         await ctx.defer()
         logger.debug(f"{ctx.author} trying to convert '{time}' from '{timezone_from}'/'{member_from}' to '{timezone_to}'/'{member_to}'")
 
@@ -151,6 +156,9 @@ class Conversions(utils.AutoLogCog):
                             ])
     async def now_member(self, ctx: SlashContext, member: discord.Member):
         """Shows current time for the other member, if they have timezone set"""
+        if not isinstance(member, discord.Member):
+            raise commands.BadArgument(f"Failed to get member '{member}' info!")
+
         await self.now(ctx, member)
 
     async def now(self, ctx: SlashContext, timezone: Union[str, discord.Member]):
@@ -182,6 +190,9 @@ class Conversions(utils.AutoLogCog):
                             ])
     async def timezone(self, ctx: SlashContext, member: discord.Member = None):
         """Shows the timezone of the member (or yours by default)"""
+        if member and not isinstance(member, discord.Member):
+            raise commands.BadArgument(f"Failed to get member '{member}' info!")
+
         await ctx.defer(hidden=True)
         logger.debug(f"{ctx.author} checking {member or ctx.author} timezone")
         

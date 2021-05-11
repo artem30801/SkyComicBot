@@ -226,6 +226,9 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
                             guild_ids=guild_ids)
     async def role_check(self, ctx: SlashContext, member: discord.Member = None):
         """Shows your (or specified users) roles"""
+        if member and not isinstance(member, discord.Member):
+            raise commands.BadArgument(f"Failed to get member '{member}' info!")
+
         member = member or ctx.author
 
         logger.debug(f"{self.format_caller(ctx)} checked {member} roles")
@@ -454,6 +457,9 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
     @commands.guild_only()
     async def role_assign(self, ctx: SlashContext, role: discord.Role, member: discord.Member = None):
         """Assign specified role to you or specified member"""
+        if member and not isinstance(member, discord.Member):
+            raise commands.BadArgument(f"Failed to get member '{member}' info!")
+
         await ctx.defer(hidden=True)
         member = member or ctx.author
         logger.info(f"{self.format_caller(ctx)} trying to assign '{role}' to {member}")
@@ -513,6 +519,9 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
                             guild_ids=guild_ids)
     async def role_unassign(self, ctx: SlashContext, role: discord.Role, member: discord.Member = None):
         """Remove specified role from you or specified member"""
+        if member and not isinstance(member, discord.Member):
+            raise commands.BadArgument(f"Failed to get member '{member}' info!")
+
         member = member or ctx.author
         logger.info(f"{self.format_caller(ctx)} trying to remove role '{role}' from {member}")
 

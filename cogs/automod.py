@@ -623,6 +623,9 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
     @has_server_perms()
     async def check_member(self, ctx: SlashContext, member: discord.Member, check="all"):
         """Performs specified (or all) security checks on given member"""
+        if not isinstance(member, discord.Member):
+            raise commands.BadArgument(f"Failed to get member '{member}' info!")
+
         await ctx.defer(hidden=False)
         to_check = self.get_to_check(check)
         embed = self.make_basic_member_embed(member)

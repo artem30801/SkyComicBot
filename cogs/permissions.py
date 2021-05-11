@@ -71,6 +71,9 @@ class Permissions(utils.AutoLogCog):
                             guild_ids=guild_ids)
     async def permissions_check(self, ctx: SlashContext, member: discord.Member = None):
         """Checks whether you (or specified user) have enough permissions to manage bots database"""
+        if member and not isinstance(member, discord.Member):
+            raise commands.BadArgument(f"Failed to get member '{member}' info!")
+
         member = member or ctx.author
         mention = member.mention if member != ctx.author else "You"
 
@@ -109,6 +112,9 @@ class Permissions(utils.AutoLogCog):
     @commands.is_owner()
     async def permissions_grant(self, ctx: SlashContext, member: discord.Member):
         """Grants permissions to manage bots database to specified user"""
+        if not isinstance(member, discord.Member):
+            raise commands.BadArgument(f"Failed to get member '{member}' info!")
+
         if await whitelisted(member):
             raise commands.BadArgument(f"{member.display_name} is already whitelisted!")
 
@@ -131,6 +137,9 @@ class Permissions(utils.AutoLogCog):
     @commands.is_owner()
     async def revoke(self, ctx: SlashContext, member: discord.Member):
         """Revokes permissions to manage bots database from specified user"""
+        if not isinstance(member, discord.Member):
+            raise commands.BadArgument(f"Failed to get member '{member}' info!")
+
         if not await whitelisted(member):
             raise commands.BadArgument(f"{member.display_name} is not whitelisted anyways!")
 
