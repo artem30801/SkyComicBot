@@ -185,9 +185,12 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                 continue
             channel = self.bot.get_channel(channel_id)
             message = channel.get_partial_message(message_id)
-            self.update_message_footer_text(message_id, embed, StatusType.BOT_STATUS)
-            await message.edit(embed=embed)
-            await self.ensure_correct_message_reactions(message, StatusType.BOT_STATUS)
+            try:
+                self.update_message_footer_text(message_id, embed, StatusType.BOT_STATUS)
+                await message.edit(embed=embed)
+                await self.ensure_correct_message_reactions(message, StatusType.BOT_STATUS)
+            except discord.Forbidden:
+                logger.warning("Cannot edit status message sent by other user")
 
         self.update_bot_status_fail_count = 0
 
