@@ -272,7 +272,7 @@ async def has_permissions(ctx, **perms):
 def ensure_tasks_running(tasks):
     for task in tasks:
         if task.is_running():
-            return
+            continue
         if task.failed():
             task.restart()
         else:
