@@ -298,17 +298,14 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             logger.warning("Too many fails, stopping restart attempts")
 
     async def try_stop_status_update(self, reaction: discord.RawReactionActionEvent, status_type: StatusType):
-        # noinspection PyBroadException
         try:
             guild = self.bot.get_guild(reaction.guild_id)
             channel = guild.get_channel(reaction.channel_id)
             message = await channel.fetch_message(reaction.message_id)
-        except Exception:
-            logger.error(f"Caught exception while preparing data for status update stop:\n"
-                         f"{traceback.format_exc()}")
+        except Exception as e:
+            logger.error(f"Caught exception while preparing data for status update stop", exc_info=e)
             return
 
-        # noinspection PyBroadException
         try:
             logger.info(f"{reaction.member} trying to stop {'bot' if status_type == StatusType.BOT_STATUS else 'guild'} status updates "
                         f"in {channel} in {guild}. Message ID: {message.id}")
@@ -323,9 +320,8 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             else:
                 if await self.try_stop_message_update(message, status_type, reaction.member):
                     await self.update_status_messages(status_type)
-        except Exception:
-            logger.error(f"Caught exception while trying to stop message update:\n"
-                         f"{traceback.format_exc()}")
+        except Exception as e:
+            logger.error(f"Caught exception while trying to stop message update:\n", exc_info=e)
             # We're not sure at which stage exception was, so updating messages and tasks just in case
             await self.update_status_messages(status_type)
         finally:
