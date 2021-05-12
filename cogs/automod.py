@@ -474,8 +474,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                             "Latency": f"{math.ceil(self.bot.latency * 100)} ms"
                         }))
 
-        embed.set_footer(text="Yours truly!",
-                         icon_url=self.bot.user.avatar_url if self.bot.user else discord.embeds.EmptyEmbed)
+        embed.set_footer(text="Yours truly!", icon_url=self.bot.user.avatar_url)
         return embed
 
     async def make_guild_status_embed(self, guild: discord.Guild, checks: dict) -> discord.Embed:
