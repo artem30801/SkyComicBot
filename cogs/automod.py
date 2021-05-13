@@ -104,9 +104,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         self.messages_to_stop = set()
 
         self.update_bot_status_fail_count = 0
-        self.wait_for_bot_status_reactions_fail_count = 0
         self.update_guilds_status_fail_count = 0
-        self.wait_for_guild_status_reactions_fail_count = 0
 
         self.checks = {"blank nick": self.check_nick_blank,
                        "fresh account": self.check_fresh_account,
@@ -207,33 +205,6 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         else:
             logger.warning("Too many fails, stopping restart attempts")
 
-    @tasks.loop()
-    async def wait_for_bot_status_reactions(self):
-
-        def is_stop_update_reaction(reaction_payload: discord.RawReactionActionEvent):
-            if reaction_payload.member.bot:
-                return False
-            return reaction_payload.message_id in self.bot_status_messages and str(reaction_payload.emoji) == utils.fail_emote
-
-        payload = await self.bot.wait_for('raw_reaction_add', check=is_stop_update_reaction)
-        # Don't wait for the all reaction handling, start waiting for new reaction immediately
-        asyncio.create_task(self.try_stop_status_update(payload, StatusType.BOT_STATUS))
-        self.wait_for_bot_status_reactions_fail_count = 0
-
-    @wait_for_bot_status_reactions.error
-    async def wait_for_bot_status_reactions_error(self, exception):
-        logger.error(f"Caught exception while waiting for bot reactions:\n"
-                     f"{traceback.format_exc()}")
-        if self.wait_for_bot_status_reactions_fail_count < utils.default_backoff.max_attempts_amount:
-            delay = utils.default_backoff.get_delay_for_attempt(self.wait_for_bot_status_reactions_fail_count)
-            logger.info(f"Waiting for {delay} seconds before restart")
-            await asyncio.sleep(delay)
-
-            self.wait_for_bot_status_reactions_fail_count += 1
-            self.wait_for_bot_status_reactions.restart()
-        else:
-            logger.warning("Too many fails, stopping restart attempts")
-
     @tasks.loop(hours=1)
     async def update_guilds_status(self):
         logger.info("Updating guild status messages")
@@ -270,32 +241,20 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         else:
             logger.warning("Too many fails, stopping restart attempts")
 
-    @tasks.loop()
-    async def wait_for_guild_status_reactions(self):
+    @commands.Cog.listener()
+    async def on_raw_reaction_add(self, reaction_payload: discord.RawReactionActionEvent):
+        if reaction_payload.member.bot:
+            return
+        if str(reaction_payload.emoji) != utils.fail_emote:
+            return
 
-        def is_stop_update_reaction(reaction_payload: discord.RawReactionActionEvent):
-            if reaction_payload.member.bot:
-                return False
-            return reaction_payload.message_id in self.guild_status_messages and str(reaction_payload.emoji) == utils.fail_emote
-
-        payload = await self.bot.wait_for('raw_reaction_add', check=is_stop_update_reaction)
-        # Don't wait for the all reaction handling, start waiting for new reaction immediately
-        asyncio.create_task(self.try_stop_status_update(payload, StatusType.GUILD_STATUS))
-        self.wait_for_guild_status_reactions_fail_count = 0
-
-    @wait_for_guild_status_reactions.error
-    async def wait_for_guild_status_reactions_error(self, exception):
-        logger.error(f"Caught exception while waiting for guilds reactions:\n"
-                     f"{traceback.format_exc()}")
-        if self.wait_for_guild_status_reactions_fail_count < utils.default_backoff.max_attempts_amount:
-            delay = utils.default_backoff.get_delay_for_attempt(self.wait_for_guild_status_reactions_fail_count)
-            logger.info(f"Waiting for {delay} seconds before restart")
-            await asyncio.sleep(delay)
-
-            self.wait_for_guild_status_reactions_fail_count += 1
-            self.wait_for_guild_status_reactions.restart()
+        if reaction_payload.message_id in self.guild_status_messages:
+            status_type = StatusType.GUILD_STATUS
+        elif reaction_payload.message_id in self.bot_status_messages:
+            status_type = StatusType.BOT_STATUS
         else:
-            logger.warning("Too many fails, stopping restart attempts")
+            return
+        await self.try_stop_status_update(reaction_payload, status_type)
 
     async def try_stop_status_update(self, reaction: discord.RawReactionActionEvent, status_type: StatusType):
         try:
@@ -606,8 +565,8 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         else:
             self.guild_status_messages = messages
 
-        status_tasks = [self.update_bot_status, self.wait_for_bot_status_reactions] if status_type == StatusType.BOT_STATUS else \
-            [self.update_guilds_status, self.wait_for_guild_status_reactions]
+        status_tasks = [self.update_bot_status] if status_type == StatusType.BOT_STATUS else \
+            [self.update_guilds_status]
         if messages:
             utils.ensure_tasks_running(status_tasks)
         else:
@@ -782,7 +741,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         guild = self.bot.get_guild(db_message.guild_id)
         channel = guild.get_channel(db_message.channel_id)
         message = await channel.fetch_message(db_message.message_id)
-        embed = message.embeds[0]
+        embed = message.embed
         self.update_message_footer_text(message.id, embed, message_type)
         await message.edit(embed=embed)
         await self.ensure_correct_message_reactions(message, message_type)
@@ -828,13 +787,14 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             if message.guild_id not in guilds_messages:
                 guilds_messages[message.guild_id] = []
             guilds_messages[message.guild_id].append(message)
-        for guild_id, messages in guilds_messages.items():
+        for guild_id, messages in guilds_messages.items():  # todo make them like bot status messages
             guild = self.bot.get_guild(guild_id)
             messages_info = []
             for message in messages:
                 channel = guild.get_channel(message.channel_id)
-                messages_info.append(f"[Message](https://discord.com/channels/{guild.id}/{channel.id}/{message.message_id}) "
-                                     f"in {channel.mention} (ID {message.id})")
+                messages_info.append(
+                    f"[Message](https://discord.com/channels/{guild.id}/{channel.id}/{message.message_id}) "
+                    f"in {channel.mention} (ID {message.id})")
             embed.add_field(name=f"{guild} status messages", value="\n".join(messages_info), inline=False)
 
         await ctx.send(embed=embed, hidden=True)
