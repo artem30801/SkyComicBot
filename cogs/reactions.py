@@ -14,11 +14,10 @@ import cogs.cog_utils as utils
 logger = logging.getLogger(__name__)
 
 
-def contains_word(message: str, word: str) -> bool:
+def re_contains(words: [str]) -> re.Pattern:
     """Returns true if there is given word in the message"""
     # \A - start of the string, \Z - end of the string, \W - not a word character
-    check_result = re.search(f"(\\A|\\W){word}(\\Z|\\W)", message, re.IGNORECASE)
-    return check_result is not None
+    return re.compile(f"\\b{'|'.join(words)}\\b", re.IGNORECASE)
 
 
 class Reactions(commands.Cog):
@@ -27,17 +26,21 @@ class Reactions(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.x_emojis = None
-        self._reactions = {("telling",): self.telling,
-                           ("wrong layer", "wrong\\s[\\w]+\\slayer"): self.wrong_layer,
-                           ("hug", "hugs"): self.hug,
-                           ("suselle",): self.suselle,
-                           ("kruselle",): self.kruselle,
-                           ("krusie",): self.krusie,
-                           ("krusielle", "kruselle"): self.krusielle,
-                           ("krisusei",): self.krisusei,
-                           ("rainbow ralsei", "hyperfloof", "polyralsei"): self.hyperfloof,
-                           ("shebus", "phanti",): self.phoebus_shanti,
-                           ("soriel",): self.soriel,
+        self._reactions = {re_contains(["telling"]): self.telling,
+                           re_contains(["wrong layer", "wrong\\s[\\w]+\\slayer"]): self.wrong_layer,
+                           re_contains(["hug", "hugs"]): self.hug,
+                           re_contains(["suselle"]): self.suselle,
+                           re_contains(["kruselle"]): self.kruselle,
+                           re_contains(["krusie"]): self.krusie,
+                           re_contains(["krusielle", "kruselle"]): self.krusielle,
+                           re_contains(["krisusei"]): self.krisusei,
+                           re_contains(["rainbow ralsei",
+                                        "hyperfloof",
+                                        "hyperfluff",
+                                        "polyralsei"
+                                        ]): self.hyperfloof,
+                           re_contains(["shebus", "phanti"]): self.phoebus_shanti,
+                           re_contains(["soriel"]): self.soriel,
                            }
 
     @commands.Cog.listener()
@@ -55,8 +58,8 @@ class Reactions(commands.Cog):
         self.reset_x_emojis()
 
         for keys, react in self._reactions.items():
-            if any(contains_word(message.content, key) for key in keys):
-                logger.debug(f"Reacted to '{message.content}' message (contains {keys})")
+            if keys.search(message.content) is not None:
+                logger.debug(f"Reacted to '{message.content}' message (matches '{keys.pattern}')")
                 try:
                     await react(message)
                 except commands.EmojiNotFound as e:
@@ -131,18 +134,18 @@ class Reactions(commands.Cog):
     async def krusielle(self, message):
         await self.add_emojis(message,
                               self.get_emoji("PT_kris_shrug"),
-                              "🇽",  # Note! That's 🇽, not x
+                              self.get_x_emoji(),
                               self.get_emoji("PT_armless_babies"),
-                              "❌",
+                              self.get_x_emoji(),
                               self.get_emoji("PT_excited_noelle")
                               )
 
     async def krisusei(self, message):
         await self.add_emojis(message,
                               self.get_emoji("PT_kris_shrug"),
-                              "🇽",  # Note! That's 🇽, not x
+                              self.get_x_emoji(),
                               self.get_emoji("PT_armless_babies"),
-                              "❌",
+                              self.get_x_emoji(),
                               self.get_emoji("PT_RalseiIdea")
                               )
 
