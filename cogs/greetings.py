@@ -190,7 +190,7 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
         member = member or ctx.author
         await ctx.send(self.get_greeting(member))
 
-    async def get_activity__code(self, voice, application_id):
+    async def get_activity_code(self, voice, application_id):
         url = f"https://discord.com/api/v8/channels/{voice.channel.id}/invites"
         api_json = {
             "max_age": 86400,
@@ -240,7 +240,7 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
         await ctx.defer()
         voice = ctx.author.voice
         application_id = activities[activity_type]
-        code = await self.get_activity__code(voice, application_id)
+        code = await self.get_activity_code(voice, application_id)
         invite = f"https://discord.gg/{code}"
         icon = await self.get_application_icon(application_id)
 
