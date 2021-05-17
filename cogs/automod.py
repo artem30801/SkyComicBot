@@ -257,13 +257,9 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         await self.try_stop_status_update(reaction_payload, status_type)
 
     async def try_stop_status_update(self, reaction: discord.RawReactionActionEvent, status_type: StatusType):
-        try:
-            guild = self.bot.get_guild(reaction.guild_id)
-            channel = guild.get_channel(reaction.channel_id)
-            message = await channel.fetch_message(reaction.message_id)
-        except Exception as e:
-            logger.error(f"Caught exception while preparing data for status update stop", exc_info=e)
-            return
+        guild = self.bot.get_guild(reaction.guild_id)
+        channel = guild.get_channel(reaction.channel_id)
+        message = await channel.fetch_message(reaction.message_id)
 
         try:
             logger.info(f"{reaction.member} trying to stop {'bot' if status_type == StatusType.BOT_STATUS else 'guild'} status updates "
@@ -275,7 +271,10 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                 await has_server_perms().predicate(ctx)
             except commands.CheckFailure:
                 logger.info(f"Prevented {reaction.member} from stopping status updates")
-                await message.remove_reaction(reaction.emoji, reaction.member)
+                if utils.can_bot_manage_messages(channel):
+                    await message.remove_reaction(reaction.emoji, reaction.member)
+                else:
+                    logger.info("Can't remove member reaction from message")
             else:
                 if await self.try_stop_message_update(message, status_type, reaction.member):
                     await self.update_status_messages(status_type)
@@ -286,7 +285,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         finally:
             self.messages_to_stop.remove(reaction.message_id)
 
-            embed = message.embeds[0]
+            embed = message.embed
             self.update_message_footer_text(message.id, embed, status_type)
             await message.edit(embed=embed)
             await self.ensure_correct_message_reactions(message, status_type)
