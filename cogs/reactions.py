@@ -32,7 +32,10 @@ class Reactions(commands.Cog):
                            ("hug", "hugs"): self.hug,
                            ("suselle",): self.suselle,
                            ("kruselle",): self.kruselle,
-                           ("krusie",): self.kruselle,
+                           ("krusie",): self.krusie,
+                           ("krusielle", "kruselle"): self.krusielle,
+                           ("krisusei",): self.krisusei,
+                           ("rainbow ralsei", "hyperfloof", "polyralsei"): self.hyperfloof,
                            ("shebus", "phanti",): self.phoebus_shanti,
                            ("soriel",): self.soriel,
                            }
@@ -96,7 +99,8 @@ class Reactions(commands.Cog):
         else:
             raise commands.EmojiNotFound(emoji_name)
 
-    async def add_emojis(self, message, *emojis):
+    @staticmethod
+    async def add_emojis(message, *emojis):
         for emoji in emojis:
             await message.add_reaction(emoji)
 
@@ -122,6 +126,34 @@ class Reactions(commands.Cog):
                               self.get_emoji("PT_kris_shrug"),
                               self.get_x_emoji(),
                               self.get_emoji("PT_armless_babies")
+                              )
+
+    async def krusielle(self, message):
+        await self.add_emojis(message,
+                              self.get_emoji("PT_kris_shrug"),
+                              "🇽",  # Note! That's 🇽, not x
+                              self.get_emoji("PT_armless_babies"),
+                              "❌",
+                              self.get_emoji("PT_excited_noelle")
+                              )
+
+    async def krisusei(self, message):
+        await self.add_emojis(message,
+                              self.get_emoji("PT_kris_shrug"),
+                              "🇽",  # Note! That's 🇽, not x
+                              self.get_emoji("PT_armless_babies"),
+                              "❌",
+                              self.get_emoji("PT_RalseiIdea")
+                              )
+
+    async def hyperfloof(self, message):
+        await self.add_emojis(message,
+                              self.get_emoji("PT_RalseiIdea"),
+                              self.get_emoji("PT_EsliraFreakout"),
+                              self.get_emoji("PT_Fried_Aelsir"),
+                              self.get_emoji("PT_Irales_Face"),
+                              self.get_emoji("PT_ScrewItSareli"),
+                              '🍋',  # Yep, that's lemon
                               )
 
     async def phoebus_shanti(self, message):
