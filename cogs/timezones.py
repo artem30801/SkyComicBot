@@ -353,11 +353,15 @@ class Conversions(utils.AutoLogCog):
             result_type = TimezoneInputType.ValidUser
         except commands.MemberNotFound:
             timezone = timezone_or_member.upper()
-            if len(timezone) > 5: # too long for timezone abbreviation
+            # Separate timezone and shift. Requires a proper fix/refactoring
+            name = timezone.split('+')[0]
+            name = name.split('-')[0]
+            name = name.split('−')[0]
+            if len(name) > 6:  # too long for timezone abbreviation
                 return None, None, TimezoneInputType.InvalidData
-            if re.search(r'\W', timezone): # not a word character shouldn't be in the timezone
+            if re.search(r'\W', name):  # not a word character shouldn't be in the timezone
                 return None, None, TimezoneInputType.InvalidData
-            if re.search(r'\d', timezone): # no numbers either
+            if re.search(r'\d', name):  # no numbers either
                 return None, None, TimezoneInputType.InvalidData
 
             result_type = TimezoneInputType.ValidTimezone
