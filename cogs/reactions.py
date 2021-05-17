@@ -31,6 +31,7 @@ class Reactions(commands.Cog):
                            ("hug", "hugs"): self.hug,
                            ("suselle",): self.suselle,
                            ("kruselle",): self.kruselle,
+                           ("krusie",): self.kruselle,
                            ("shebus", "phanti",): self.phoebus_shanti,
                            ("soriel",): self.soriel,
                            }
@@ -99,9 +100,16 @@ class Reactions(commands.Cog):
 
     async def kruselle(self, message):
         await self.add_emojis(message,
-                              self.get_emoji("PT_armless_babies"),
+                              self.get_emoji("PT_kris_shrug"),
                               "🇽",  # Note! That's 🇽, not x
-                              self.get_emoji("PT_kris_shrug")
+                              self.get_emoji("PT_excited_noelle")
+                              )
+
+    async def krusie(self, message):
+        await self.add_emojis(message,
+                              self.get_emoji("PT_kris_shrug"),
+                              "🇽",  # Note! That's 🇽, not x
+                              self.get_emoji("PT_armless_babies")
                               )
 
     async def phoebus_shanti(self, message):
