@@ -107,6 +107,8 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
             await ctx.send("Can't send an empty message", hidden=True)
             return
 
+        await ctx.defer()
+
         file = None
         name = ""
         if attachment_link is not None:
