@@ -26,6 +26,7 @@ class Reactions(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
+        self.x_emojis = None
         self._reactions = {("telling",): self.telling,
                            ("wrong layer", "wrong\\s[\\w]+\\slayer"): self.wrong_layer,
                            ("hug", "hugs"): self.hug,
@@ -48,6 +49,8 @@ class Reactions(commands.Cog):
             if self.bot.get_cog("Channels").is_update_monitor_channel(message.channel):
                 await self.notify_update(message)
 
+        self.reset_x_emojis()
+
         for keys, react in self._reactions.items():
             if any(contains_word(message.content, key) for key in keys):
                 logger.debug(f"Reacted to '{message.content}' message (contains {keys})")
@@ -55,7 +58,8 @@ class Reactions(commands.Cog):
                     await react(message)
                 except commands.EmojiNotFound as e:
                     logger.warning(e)
-                break
+                except StopIteration:
+                    logger.debug("Ran out of x's to separate ships with")
 
     async def notify_update(self, message):
         logger.info("Reacted on update")
@@ -76,6 +80,14 @@ class Reactions(commands.Cog):
         await send_file(message.channel, abs_join(self.bot.current_dir, "reactions", "wrong_layer.gif"),
                         "wronglayersong.gif")
 
+    def reset_x_emojis(self):
+        emojis = ["🇽", "❌", "❎", ]
+        random.shuffle(emojis)
+        self.x_emojis = iter(emojis)
+
+    def get_x_emoji(self):
+        return next(self.x_emojis)
+
     def get_emoji(self, emoji_name):
         # emoji = commands.EmojiConverter().convert(ctx, emoji_name)
         emoji = discord.utils.get(self.bot.emojis, name=emoji_name)
@@ -94,34 +106,36 @@ class Reactions(commands.Cog):
     async def suselle(self, message):
         await self.add_emojis(message,
                               self.get_emoji("PT_armless_babies"),
-                              "🇽",  # Note! That's 🇽, not x
+                              self.get_x_emoji(),
                               self.get_emoji("PT_excited_noelle")
                               )
 
     async def kruselle(self, message):
         await self.add_emojis(message,
                               self.get_emoji("PT_kris_shrug"),
-                              "🇽",  # Note! That's 🇽, not x
+                              self.get_x_emoji(),
                               self.get_emoji("PT_excited_noelle")
                               )
 
     async def krusie(self, message):
         await self.add_emojis(message,
                               self.get_emoji("PT_kris_shrug"),
-                              "🇽",  # Note! That's 🇽, not x
+                              self.get_x_emoji(),
                               self.get_emoji("PT_armless_babies")
                               )
 
     async def phoebus_shanti(self, message):
         await self.add_emojis(message,
                               self.get_emoji("shantisdone"),
-                              "🇽",  # Note! That's 🇽, not x
+                              self.get_x_emoji(),
                               self.get_emoji("ShantiWTF")
                               )
 
     async def soriel(self, message):
         await self.add_emojis(message,
-                              "🐐", "🇽", "💀"  # Note! That's 🇽, not x
+                              "🐐",
+                              self.get_x_emoji(),
+                              "💀"
                               )
 
     @staticmethod
