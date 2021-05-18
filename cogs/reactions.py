@@ -28,6 +28,7 @@ class Reactions(commands.Cog):
         reactions = {("telling",): self.telling,
                      ("wrong layer",): self.wrong_layer,
                      ("hug", "hugs",): self.hug,
+                     ("baby alphys",): self.baby_alphys,
                      ("suselle",): self.suselle,
                      ("kriselle",): self.kriselle,
                      ("krusie",): self.krusie,
@@ -113,6 +114,12 @@ class Reactions(commands.Cog):
 
     async def hug(self, message):
         await message.add_reaction(self.get_emoji("griffin_hug"))
+
+    async def baby_alphys(self, message):
+        await self.add_emojis(message,
+                              self.get_emoji("griffin_happy"),
+                              '❤',
+                              self.get_emoji("LG_Alphys"))
 
     async def suselle(self, message):
         await self.add_emojis(message,
