@@ -29,9 +29,9 @@ class Reactions(commands.Cog):
                      ("wrong layer",): self.wrong_layer,
                      ("hug", "hugs",): self.hug,
                      ("suselle",): self.suselle,
-                     ("krusele", "kruselle",): self.kruselle,
+                     ("kriselle",): self.kriselle,
                      ("krusie",): self.krusie,
-                     ("krusielle",): self.krusielle,
+                     ("krusielle", "kruselle"): self.krusielle,
                      ("kralsei",): self.kralsei,
                      ("krisusei",): self.krisusei,
                      ("rainbow ralsei", "hyperfloof", "hyperfluff", "polyralsei",): self.hyperfloof,
@@ -121,7 +121,7 @@ class Reactions(commands.Cog):
                               self.get_emoji("PT_excited_noelle")
                               )
 
-    async def kruselle(self, message):
+    async def kriselle(self, message):
         await self.add_emojis(message,
                               self.get_emoji("PT_kris_shrug"),
                               self.get_x_emoji(),
