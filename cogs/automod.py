@@ -489,6 +489,8 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         user_info = {
             "Name": member,
             "ID": member.id,
+            "Status": str(member.activity or "None set"),
+            "Online status": str(member.status or "Not available"),
             "Registered at": f"{member.created_at.strftime(utils.time_format)} (UTC)",
             "Joined at": f"{member.joined_at.strftime(utils.time_format)} (UTC)",
         }
