@@ -29,12 +29,13 @@ class Reactions(commands.Cog):
                      ("wrong layer",): self.wrong_layer,
                      ("hug", "hugs",): self.hug,
                      ("suselle",): self.suselle,
-                     ("krusele", "kruselle"): self.kruselle,
+                     ("krusele", "kruselle",): self.kruselle,
                      ("krusie",): self.krusie,
                      ("krusielle",): self.krusielle,
+                     ("kralsei",): self.kralsei,
                      ("krisusei",): self.krisusei,
                      ("rainbow ralsei", "hyperfloof", "hyperfluff", "polyralsei",): self.hyperfloof,
-                     ("shebus", "phanti",): self.phoebus_shanti,
+                     ("shebus", "shaebus", "phanti",): self.phoebus_shanti,
                      ("soriel",): self.soriel,
                      }
         self._reactions = [(re_contains(words), react) for words, react in reactions.items()]
@@ -141,6 +142,13 @@ class Reactions(commands.Cog):
                               self.get_emoji("PT_armless_babies"),
                               self.get_x_emoji(),
                               self.get_emoji("PT_excited_noelle")
+                              )
+
+    async def kralsei(self, message):
+        await self.add_emojis(message,
+                              self.get_emoji("PT_kris_shrug"),
+                              self.get_x_emoji(),
+                              self.get_emoji("PT_RalseiIdea")
                               )
 
     async def krisusei(self, message):
