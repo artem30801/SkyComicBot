@@ -10,14 +10,13 @@ from discord.ext.commands.errors import RoleNotFound
 from cogs.cog_utils import abs_join, send_file
 import cogs.cog_utils as utils
 
-
 logger = logging.getLogger(__name__)
 
 
 def re_contains(words: [str]) -> re.Pattern:
     """Returns true if there is given word in the message"""
-    # \A - start of the string, \Z - end of the string, \W - not a word character
-    return re.compile(f"\\b{'|'.join(words)}\\b", re.IGNORECASE)
+    re_string = r"|".join([rf"\b{word}\b" for word in words])
+    return re.compile(re_string, flags=re.IGNORECASE)
 
 
 class Reactions(commands.Cog):
@@ -26,22 +25,19 @@ class Reactions(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.x_emojis = None
-        self._reactions = {re_contains(["telling"]): self.telling,
-                           re_contains(["wrong layer", "wrong\\s[\\w]+\\slayer"]): self.wrong_layer,
-                           re_contains(["hug", "hugs"]): self.hug,
-                           re_contains(["suselle"]): self.suselle,
-                           re_contains(["kruselle"]): self.kruselle,
-                           re_contains(["krusie"]): self.krusie,
-                           re_contains(["krusielle", "kruselle"]): self.krusielle,
-                           re_contains(["krisusei"]): self.krisusei,
-                           re_contains(["rainbow ralsei",
-                                        "hyperfloof",
-                                        "hyperfluff",
-                                        "polyralsei"
-                                        ]): self.hyperfloof,
-                           re_contains(["shebus", "phanti"]): self.phoebus_shanti,
-                           re_contains(["soriel"]): self.soriel,
-                           }
+        reactions = {("telling",): self.telling,
+                     ("wrong layer",): self.wrong_layer,
+                     ("hug", "hugs",): self.hug,
+                     ("suselle",): self.suselle,
+                     ("kruselle",): self.kruselle,
+                     ("krusie",): self.krusie,
+                     ("krusielle", "kruselle",): self.krusielle,
+                     ("krisusei",): self.krisusei,
+                     ("rainbow ralsei", "hyperfloof", "hyperfluff", "polyralsei",): self.hyperfloof,
+                     ("shebus", "phanti",): self.phoebus_shanti,
+                     ("soriel",): self.soriel,
+                     }
+        self._reactions = {re_contains(words): react for words, react in reactions.items()}
 
     @commands.Cog.listener()
     async def on_message(self, message: Message):
