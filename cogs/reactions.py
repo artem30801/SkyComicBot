@@ -29,15 +29,15 @@ class Reactions(commands.Cog):
                      ("wrong layer",): self.wrong_layer,
                      ("hug", "hugs",): self.hug,
                      ("suselle",): self.suselle,
-                     ("kruselle",): self.kruselle,
+                     ("krusele", "kruselle"): self.kruselle,
                      ("krusie",): self.krusie,
-                     ("krusielle", "kruselle",): self.krusielle,
+                     ("krusielle",): self.krusielle,
                      ("krisusei",): self.krisusei,
                      ("rainbow ralsei", "hyperfloof", "hyperfluff", "polyralsei",): self.hyperfloof,
                      ("shebus", "phanti",): self.phoebus_shanti,
                      ("soriel",): self.soriel,
                      }
-        self._reactions = {re_contains(words): react for words, react in reactions.items()}
+        self._reactions = [(re_contains(words), react) for words, react in reactions.items()]
 
     @commands.Cog.listener()
     async def on_message(self, message: Message):
@@ -51,17 +51,24 @@ class Reactions(commands.Cog):
             if self.bot.get_cog("Channels").is_update_monitor_channel(message.channel):
                 await self.notify_update(message)
 
-        self.reset_x_emojis()
+        to_react = []
+        for re_expression, react_func in self._reactions:
+            if (match := re_expression.search(message.content)) is not None:
+                logger.debug(f"Matched reaction to '{message.content}' message (matches '{re_expression.pattern}')")
+                to_react.append((match.start(), re_expression, react_func))
 
-        for keys, react in self._reactions.items():
-            if keys.search(message.content) is not None:
-                logger.debug(f"Reacted to '{message.content}' message (matches '{keys.pattern}')")
-                try:
-                    await react(message)
-                except commands.EmojiNotFound as e:
-                    logger.warning(e)
-                except StopIteration:
-                    logger.debug("Ran out of x's to separate ships with")
+        if not to_react:
+            return
+
+        self.reset_x_emojis()
+        to_react.sort(key=lambda x: x[0])
+        for _, re_expression, react_func in to_react:
+            try:
+                await react_func(message)
+            except commands.EmojiNotFound as e:
+                logger.warning(e)
+            except StopIteration:
+                logger.debug("Ran out of x's to separate ships with")
 
     async def notify_update(self, message):
         logger.info("Reacted on update")
