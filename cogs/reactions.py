@@ -36,6 +36,7 @@ class Reactions(commands.Cog):
                      ("kralsei",): self.kralsei,
                      ("krisusei",): self.krisusei,
                      ("rainbow ralsei", "hyperfloof", "hyperfluff", "polyralsei",): self.hyperfloof,
+                     ("fun gang", ): self.fun_gang,
                      ("shebus", "shaebus", "phanti",): self.phoebus_shanti,
                      ("soriel",): self.soriel,
                      }
@@ -173,8 +174,16 @@ class Reactions(commands.Cog):
                               self.get_emoji("PT_EsliraFreakout"),
                               self.get_emoji("PT_Fried_Aelsir"),
                               self.get_emoji("PT_Irales_Face"),
-                              self.get_emoji("PT_ScrewItSareli"),
-                              '🍋',  # Yep, that's lemon
+                              self.get_emoji("DEV_SareliAnxious"),
+                              self.get_emoji("DEV_LairseMood"),
+                              )
+
+    async def fun_gang(self, message):
+        await self.add_emojis(message,
+                              self.get_emoji("PT_kris_shrug"),
+                              self.get_emoji("PT_RalseiIdea"),
+                              self.get_emoji("PT_armless_babies"),
+                              self.get_emoji("PT_Perplexed_Lancer")
                               )
 
     async def phoebus_shanti(self, message):
