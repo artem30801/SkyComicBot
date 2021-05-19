@@ -183,7 +183,8 @@ class Reactions(commands.Cog):
                               self.get_emoji("PT_kris_shrug"),
                               self.get_emoji("PT_RalseiIdea"),
                               self.get_emoji("PT_armless_babies"),
-                              self.get_emoji("PT_Perplexed_Lancer")
+                              self.get_emoji("PT_Perplexed_Lancer"),
+                              self.get_emoji("PT_excited_noelle")
                               )
 
     async def phoebus_shanti(self, message):
