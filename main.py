@@ -98,9 +98,10 @@ async def main():
     bot.load_initial_extensions(initial_extensions)
 
     models = ["cogs.permissions", "cogs.roles", "cogs.timezones", "cogs.channels", "cogs.automod", ]  # "cogs.comics",
+    current_models = [model for model in bot.extensions if model in models]
     try:
         await Tortoise.init(db_url=bot.config["auth"]["db_url"],
-                            modules={"models": models})
+                            modules={"models": current_models})
         await Tortoise.generate_schemas()
         await bot.start()
     finally:
