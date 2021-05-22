@@ -68,7 +68,7 @@ class Reactions(commands.Cog):
                 await react_func(message)
             except commands.EmojiNotFound as e:
                 logger.warning(e)
-            except StopIteration:
+            except RuntimeError:
                 logger.debug("Ran out of x's to separate ships with")
 
     async def notify_update(self, message):
