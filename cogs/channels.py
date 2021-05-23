@@ -90,9 +90,6 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
         logger.warning(f"Deleted channel setup from {stack or '(deleted guild)'} as channel was deleted")
 
     async def get_channels(self, guild: discord.Guild = None, channel_type: int = None) -> [discord.TextChannel]:
-        return await utils.default_backoff.run_task(self._get_channels, guild, channel_type)
-
-    async def _get_channels(self, guild: discord.Guild = None, channel_type: int = None) -> [discord.TextChannel]:
         setups = ChannelSetup.all()
         if channel_type is not None:
             setups = setups.filter(channel_type=channel_type)
@@ -121,7 +118,7 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
 
     @staticmethod
     async def is_channel_type(channel: discord.TextChannel, channel_type: int):
-        return await utils.default_backoff.run_task(ChannelSetup.exists, channel_id=channel.id, channel_type=channel_type)
+        return await ChannelSetup.exists(channel_id=channel.id, channel_type=channel_type)
 
     def is_no_reactions_channel(self, channel: discord.TextChannel):
         return channel in self.no_react_channels
@@ -160,14 +157,14 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
         guild_id = ctx.guild_id
         logger.db(f"'{ctx.author}' trying to set type '{channel_type_name}' to '{channel}' in '{ctx.guild}'")
 
-        if await utils.default_backoff.run_task(ChannelSetup.exists, guild_id=guild_id, channel_id=channel_id, channel_type=type_index):
+        if ChannelSetup.exists(guild_id=guild_id, channel_id=channel_id, channel_type=type_index):
             await ctx.send(f"{channel.mention} already has type '{channel_type_name}'", hidden=True)
             return
 
-        await utils.default_backoff.run_task(ChannelSetup.create, guild_id=guild_id, channel_id=channel_id, channel_type=type_index)
+        await ChannelSetup(guild_id=guild_id, channel_id=channel_id, channel_type=type_index)
         logger.db(f"Set type '{channel_type_name}' to '{channel}' in '{ctx.guild}'")
 
-        existing_channels = await utils.default_backoff.run_task(ChannelSetup.filter, guild_id=guild_id, channel_type=type_index)
+        existing_channels = ChannelSetup.filter(guild_id=guild_id, channel_type=type_index)
         success_msg = f"Set type '{channel_type_name}' for {channel.mention}"
         if len(existing_channels) == 1:
             await ctx.send(f"{success_msg}. This is the only channel with this type", hidden=True)
@@ -206,7 +203,7 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
         type_string = "all types" if ChannelType.is_default_index(type_index) else f"type '{ChannelType(type_index)}'"
         logger.db(f"'{ctx.author}' trying to remove {type_string} from '{channel}' in '{ctx.guild}'")
 
-        channel_setups = await utils.default_backoff.run_task(ChannelSetup.filter, guild_id=ctx.guild_id, channel_id=channel.id)
+        channel_setups = ChannelSetup.filter(guild_id=ctx.guild_id, channel_id=channel.id)
         if not channel_setups:
             await ctx.send(f"{channel.mention} don't have any type set", hidden=True)
             return
@@ -217,7 +214,7 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
                 continue
             channel_type = ChannelType(ch_setup.channel_type)
             removed_types.append(f"'*{channel_type.description}*'")
-            await utils.default_backoff.run_task(ch_setup.delete)
+            await ch_setup.delete()
             logger.db(f"Removed type '{channel_type.description}' from '{channel}' in '{ctx.guild}'")
 
         if not removed_types:
@@ -253,7 +250,7 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
         guild_id = ctx.guild_id
         logger.info(f"'{ctx.author}' trying to list types of '*{channel}*' in '{ctx.guild}'")
 
-        types = await utils.default_backoff.run_task(ChannelSetup.filter, guild_id=guild_id, channel_id=channel_id)
+        types = ChannelSetup.filter(guild_id=guild_id, channel_id=channel_id)
         types = [f"'{ChannelType(channel_setup.channel_type).description}'" for channel_setup in types]
         if types:
             await ctx.send(f"Channel {channel.mention} has {'types' if len(types) > 1 else 'type'} {', '.join(types)}",
@@ -280,7 +277,7 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
         logger.db(f"'{ctx.author}' trying to list channels with {type_index} type index in '{ctx.guild}'")
         types = ChannelType if ChannelType.is_default_index(type_index) else [ChannelType(type_index)]
 
-        channels = await utils.default_backoff.run_task(ChannelSetup.filter, guild_id=ctx.guild.id)
+        channels = await ChannelSetup.filter(guild_id=ctx.guild.id)
         if not channels:
             await ctx.send("There are no channels with set type", hidden=True)
             return

@@ -2,7 +2,6 @@ import asyncio
 import collections
 import logging
 import math
-import traceback
 from typing import Union
 
 import psutil
@@ -30,8 +29,29 @@ from cogs.permissions import has_server_perms
 
 
 class StatusType(Enum):
-    BOT_STATUS = 1
-    GUILD_STATUS = 2
+    BOT_STATUS = 1, None
+    GUILD_STATUS = 2, commands.BucketType.guild
+
+    def __new__(cls, *args, **kwargs):
+        obj = object.__new__(cls)
+        obj._value_ = args[0]
+        return obj
+
+    # ignore the first param since it's already set by __new__
+    def __init__(self, _, bucket_type=None):
+        self._bucket_type = bucket_type
+
+    @property
+    def bucket_type(self):
+        return self._bucket_type
+
+    def get_id(self, obj):
+        if self.bucket_type is None:
+            return None
+        if self is commands.BucketType.guild:
+            return (obj.guild or obj.author).id
+
+        return NotImplementedError
 
 
 class StatusMessage(Model):
@@ -99,12 +119,11 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         self._join_report_cooldown = commands.CooldownMapping.from_cooldown(
             1, 15 * 60, commands.BucketType.guild)
 
-        self.bot_status_messages = {}
-        self.guild_status_messages = {}
-        self.messages_to_stop = set()
+        self.status_messages = {status_type: {} for status_type in StatusType}
+        self.status_error_backoff = {status_type: utils.BackoffStrategyBase(max_attempts=5)
+                                     for status_type in StatusType}
 
-        self.update_bot_status_fail_count = 0
-        self.update_guilds_status_fail_count = 0
+        self.messages_to_stop = set()
 
         self.checks = {"blank nick": self.check_nick_blank,
                        "fresh account": self.check_fresh_account,
@@ -122,8 +141,8 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         self.check_server.options[0]["choices"] = choices
 
     async def on_startup(self):
-        await self.update_status_messages(StatusType.BOT_STATUS)
-        await self.update_status_messages(StatusType.GUILD_STATUS)
+        for status_type in StatusType:
+            await self.update_status_tasks(status_type)
 
     @commands.Cog.listener()
     async def on_message(self, message):
@@ -171,75 +190,74 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         self.add_checks_fields(embed, member, {"fast leave": self.check_fast_leave})
         await self.send_mod_log(member.guild, embed=embed)
 
-    @tasks.loop(minutes=5)
-    async def update_bot_status(self):
-        logger.info("Updating bot status messages")
+    async def get_status_embed(self, embed_id, status_type):
+        if status_type is StatusType.GUILD_STATUS:
+            return await self.make_guild_status_embed(self.bot.get_guild(embed_id))
+        elif status_type is StatusType.BOT_STATUS:
+            return await self.make_bot_status_embed()
 
-        embed = await self.make_bot_status_embed()
-        embed.timestamp = datetime.utcnow()
-        for message_id, channel_id in self.bot_status_messages.items():
+        raise NotImplementedError
+
+    def get_status_update_task(self, status_type):
+        if status_type is StatusType.GUILD_STATUS:
+            return self.update_guilds_status
+        elif status_type is StatusType.BOT_STATUS:
+            return self.update_bot_status
+
+        raise NotImplementedError
+
+    async def update_status(self, status_type):
+        logger.info(f"Updating {status_type} status messages")
+
+        updated_count = 0
+        status_messages = self.status_messages[status_type]
+        embeds = dict()
+        for message_id, channel_id in status_messages.items():
             if message_id in self.messages_to_stop:
                 continue
+
             channel = self.bot.get_channel(channel_id)
             message = channel.get_partial_message(message_id)
-            try:
-                self.update_message_footer_text(message_id, embed, StatusType.BOT_STATUS)
-                await message.edit(embed=embed)
-                await self.ensure_correct_message_reactions(message, StatusType.BOT_STATUS)
-            except discord.Forbidden:
-                logger.warning("Cannot edit status message sent by other user")
 
-        self.update_bot_status_fail_count = 0
+            embed_id = status_type.get_id(message)
+            if embed_id not in embeds:
+                embeds[embed_id] = await self.get_status_embed(embed_id, status_type)
+            embed = embeds[embed_id]
 
-    @update_bot_status.error
-    async def update_bot_status_error(self, exception):
-        logger.error(f"Caught exception while updating bot status:\n"
-                     f"{traceback.format_exc()}")
-        if self.update_bot_status_fail_count < utils.default_backoff.max_attempts_amount:
-            delay = utils.default_backoff.get_delay_for_attempt(self.update_bot_status_fail_count)
-            logger.info(f"Waiting for {delay} seconds before restart")
-            await asyncio.sleep(delay)
+            if await self.update_message_footer_reactions(message, status_type, embed):
+                updated_count += 1
 
-            self.update_bot_status_fail_count += 1
-            self.update_bot_status.restart()
-        else:
-            logger.warning("Too many fails, stopping restart attempts")
+        logger.info(f"Updated {updated_count} {status_type} status messages")
+        self.status_error_backoff[status_type].reset()
+
+    @tasks.loop(minutes=1)
+    async def update_bot_status(self):
+        await self.update_status(StatusType.BOT_STATUS)
 
     @tasks.loop(hours=1)
     async def update_guilds_status(self):
-        logger.info("Updating guild status messages")
+        await self.update_status(StatusType.GUILD_STATUS)
 
-        guild_embeds = dict()
-        for message_id, channel_id in self.guild_status_messages.items():
-            if message_id in self.messages_to_stop:
-                continue
-            channel = self.bot.get_channel(channel_id)
-            if channel.guild in guild_embeds:
-                embed = guild_embeds[channel.guild]
-            else:
-                embed = await self.make_guild_status_embed(channel.guild, self.checks)
-                embed.timestamp = datetime.utcnow()
-                self.update_message_footer_text(message_id, embed, StatusType.GUILD_STATUS)
-                guild_embeds[channel.guild] = embed
-            message = channel.get_partial_message(message_id)
-            await message.edit(embed=embed)
-            await self.ensure_correct_message_reactions(message, StatusType.GUILD_STATUS)
+    async def update_status_error(self, exception, status_type):
+        logger.error(f"Caught exception while updating {status_type} status:", exc_info=exception)
+        try:
+            delay = next(self.status_error_backoff[status_type])
+        except StopIteration:
+            logger.warning("Too many fails, stopping restart attempts")
+            return
 
-        self.update_guilds_status_fail_count = 0
+        logger.info(f"Waiting for {delay} seconds before restart")
+        await asyncio.sleep(delay)
+        task = self.get_status_update_task(status_type)
+        task.restart()
+
+    @update_bot_status.error
+    async def update_bot_status_error(self, exception):
+        await self.update_status_error(exception, StatusType.BOT_STATUS)
 
     @update_guilds_status.error
     async def update_guilds_status_error(self, exception):
-        logger.error(f"Caught exception while updating guilds status:\n"
-                     f"{traceback.format_exc()}")
-        if self.update_guilds_status_fail_count < utils.default_backoff.max_attempts_amount:
-            delay = utils.default_backoff.get_delay_for_attempt(self.update_guilds_status_fail_count)
-            logger.info(f"Waiting for {delay} seconds before restart")
-            await asyncio.sleep(delay)
-
-            self.update_guilds_status_fail_count += 1
-            self.update_guilds_status.restart()
-        else:
-            logger.warning("Too many fails, stopping restart attempts")
+        await self.update_status_error(exception, StatusType.BOT_STATUS)
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, reaction_payload: discord.RawReactionActionEvent):
@@ -248,55 +266,44 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         if str(reaction_payload.emoji) != utils.fail_emote:
             return
 
-        if reaction_payload.message_id in self.guild_status_messages:
-            status_type = StatusType.GUILD_STATUS
-        elif reaction_payload.message_id in self.bot_status_messages:
-            status_type = StatusType.BOT_STATUS
-        else:
-            return
-        await self.try_stop_status_update(reaction_payload, status_type)
+        for status_type, messages in self.status_messages.items():
+            if reaction_payload.message_id in messages:
+                await self.try_stop_status_update(reaction_payload, status_type)
+                break
 
     async def try_stop_status_update(self, reaction: discord.RawReactionActionEvent, status_type: StatusType):
         guild = self.bot.get_guild(reaction.guild_id)
         channel = guild.get_channel(reaction.channel_id)
         message = await channel.fetch_message(reaction.message_id)
 
+        logger.info(f"{reaction.member} trying to stop {status_type} status updates"
+                    f"in {channel} in {guild}. Message ID: {message.id}")
         try:
-            logger.info(f"{reaction.member} trying to stop {'bot' if status_type == StatusType.BOT_STATUS else 'guild'} status updates "
-                        f"in {channel} in {guild}. Message ID: {message.id}")
-
-            self.messages_to_stop.add(reaction.message_id)
-            try:
-                ctx = FakeCheckContext(guild=guild, channel=channel, author=reaction.member, bot=self.bot)
-                await has_server_perms().predicate(ctx)
-            except commands.CheckFailure:
-                logger.info(f"Prevented {reaction.member} from stopping status updates")
-                if utils.can_bot_manage_messages(channel):
-                    await message.remove_reaction(reaction.emoji, reaction.member)
-                else:
-                    logger.info("Can't remove member reaction from message")
+            ctx = FakeCheckContext(guild=guild, channel=channel, author=reaction.member, bot=self.bot)
+            await has_server_perms().predicate(ctx)
+        except commands.CheckFailure:
+            logger.info(f"Prevented {reaction.member} from stopping status updates. No server permissions")
+            if utils.can_bot_manage_messages(channel):
+                await message.remove_reaction(reaction.emoji, reaction.member)
             else:
-                if await self.try_stop_message_update(message, status_type, reaction.member):
-                    await self.update_status_messages(status_type)
-        except Exception as e:
-            logger.error(f"Caught exception while trying to stop message update:\n", exc_info=e)
-            # We're not sure at which stage exception was, so updating messages and tasks just in case
-            await self.update_status_messages(status_type)
-        finally:
+                logger.info("Can't remove member reaction from message")
+            return
+
+        self.messages_to_stop.add(reaction.message_id)
+        await self.update_message_footer_reactions(message, status_type)
+
+        if await self.try_stop_message_update(message, reaction.member):
+            await self.update_status_tasks(status_type)
+
+        try:
             self.messages_to_stop.remove(reaction.message_id)
+        except KeyError:
+            pass
 
-            embed = message.embed
-            self.update_message_footer_text(message.id, embed, status_type)
-            await message.edit(embed=embed)
-            await self.ensure_correct_message_reactions(message, status_type)
-            logger.info("Finished message update stop attempt")
+        await self.update_message_footer_reactions(message, status_type)
+        logger.info("Finished message update stop attempt")
 
-    async def try_stop_message_update(self, message: discord.Message, message_type: StatusType, requester: discord.Member):
-        embed = message.embeds[0]
-        self.update_message_footer_text(message.id, embed, message_type)
-        await message.edit(embed=embed)
-        await self.ensure_correct_message_reactions(message, message_type)
-
+    async def try_stop_message_update(self, message: discord.Message, requester: discord.Member):
         def is_cancel_reaction(reaction_payload: discord.RawReactionActionEvent):
             if reaction_payload.message_id != message.id:
                 return False
@@ -308,9 +315,9 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             await self.bot.wait_for('raw_reaction_add', timeout=self.resume_update_timeout, check=is_cancel_reaction)
         except asyncio.TimeoutError:
             # There was no reaction, removing status message
-            status_message = await utils.default_backoff.run_task(StatusMessage.get_or_none, message_id=message.id)
+            status_message = await utils.OrmBackoffStrategy().run_task(StatusMessage.get_or_none, message_id=message.id)
             if status_message:
-                await utils.default_backoff.run_task(status_message.delete)
+                await status_message.delete()
 
             logger.info(f"Stopped status updates for message {message.id}")
             return True
@@ -411,12 +418,12 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
 
             disk_info = psutil.disk_usage(self.bot.current_dir)
 
-        bot_used, _ = await utils.run(f"du -s {self.bot.current_dir}")
-        if bot_used:
-            bot_used = int(bot_used.split("\t")[0].strip())
-            bot_used = utils.format_size(bot_used * 1024)
+        storage_size, _ = await utils.run(f"du -s {self.bot.current_dir}")
+        if storage_size:
+            storage_size = int(storage_size.split("\t")[0].strip())
+            storage_size = utils.format_size(storage_size * 1024)
         else:
-            bot_used = no
+            storage_size = no
 
         embed.add_field(name="Resource consumption",
                         value=utils.format_lines({
@@ -424,14 +431,15 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                             "RAM": f"{utils.format_size(memory)} ({memory_p:.1f}%)",
                             "Disk": f"{utils.format_size(disk_info.used)} "
                                     f"({disk_info.percent:.1f}%)",
-                            "Storage": bot_used,
+                            "Storage": storage_size,
                             "Latency": f"{math.ceil(self.bot.latency * 100)} ms"
                         }))
 
         embed.set_footer(text="Yours truly!", icon_url=self.bot.user.avatar_url)
         return embed
 
-    async def make_guild_status_embed(self, guild: discord.Guild, checks: dict) -> discord.Embed:
+    async def make_guild_status_embed(self, guild: discord.Guild, checks: dict = None) -> discord.Embed:
+        checks = checks or self.checks
         embed = discord.Embed()
         embed.set_author(name=guild.name, icon_url=guild.icon_url)
         total_failed = 0
@@ -518,56 +526,68 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         if not embed.title:
             embed.title = "User check results"
         if checks and not embed.description:
-            embed.description = f"**{failed_count}/{len(checks)}** checks failed" if failed_count > 0 else "All checks passed!"
+            embed.description = f"**{failed_count}/{len(checks)}** checks failed" if failed_count > 0 \
+                else "All checks passed!"
 
-    def update_message_footer_text(self, message_id: int, embed: discord.Embed, message_type: StatusType):
+    def update_message_footer_text(self, message_id: int, embed: discord.Embed, status_type: StatusType):
         icon_url = embed.footer.icon_url
         if message_id in self.messages_to_stop:
-            embed.set_footer(text=f"Press {utils.refresh_emote} in next {self.resume_update_timeout} seconds to resume updates",
+            embed.set_footer(text=f"Press {utils.refresh_emote} in next"
+                                  f" {self.resume_update_timeout} seconds to resume updates",
                              icon_url=icon_url)
             return
 
-        status_messages = self.bot_status_messages if message_type == StatusType.BOT_STATUS else self.guild_status_messages
+        status_messages = self.status_messages[status_type]
         if message_id in status_messages:
-            task = self.update_bot_status if message_type == StatusType.BOT_STATUS else self.update_guilds_status
+            task = self.get_status_update_task(status_type)
             update_period = utils.display_task_period(task)
-            embed.set_footer(text=f"Updates every {update_period}. Press {utils.fail_emote} to stop updates", icon_url=icon_url)
+            embed.set_footer(text=f"Updates every {update_period}. Press {utils.fail_emote} to stop updates",
+                             icon_url=icon_url)
         else:
             embed.set_footer(text="Updates stopped", icon_url=icon_url)
 
-    async def ensure_correct_message_reactions(self, message: Union[discord.Message, discord.PartialMessage], message_type: StatusType):
-        """Makes sure that status message has correct reactions for the current state"""
-        can_manage_reactions = utils.can_bot_manage_messages(message.channel)
+    async def update_message_footer_reactions(self, message, status_type, embed=None):
+        embed = embed or message.embeds[0]
+        embed.timestamp = datetime.utcnow()
+        self.update_message_footer_text(message.id, embed, status_type)
 
-        if can_manage_reactions:
-            await message.clear_reactions()
-
-        if message.id in self.messages_to_stop:
-            if not can_manage_reactions:
-                await message.remove_reaction(utils.fail_emote, self.bot.user)
-
-            await message.add_reaction(utils.refresh_emote)
+        try:
+            await message.edit(embed=embed)
+        except discord.Forbidden:
+            logger.warning("Cannot edit status message sent by other user")
+            return False
         else:
-            if not can_manage_reactions:
-                await message.remove_reaction(utils.refresh_emote, self.bot.user)
+            await self.ensure_message_reactions(message, status_type)
+            return True
 
-            status_messages = self.bot_status_messages if message_type == StatusType.BOT_STATUS else self.guild_status_messages
+    async def _remove_bot_reaction(self, message, emote):
+        if utils.can_bot_manage_messages(message.channel):
+            await message.clear_reaction(emote)
+        else:
+            await message.remove_reaction(emote, self.bot.user)
+
+    async def ensure_message_reactions(self, message: Union[discord.Message, discord.PartialMessage],
+                                       status_type: StatusType):
+        """Makes sure that status message has correct reactions for the current state"""
+        if message.id in self.messages_to_stop:
+            await message.add_reaction(utils.refresh_emote)
+            await self._remove_bot_reaction(message, utils.fail_emote)
+        else:
+            status_messages = self.status_messages[status_type]
             if message.id in status_messages:
                 await message.add_reaction(utils.fail_emote)
             else:
-                await message.remove_reaction(utils.fail_emote, self.bot.user)
+                await self._remove_bot_reaction(message, utils.fail_emote)
 
-    async def update_status_messages(self, status_type: StatusType):
-        messages = await utils.default_backoff.run_task(StatusMessage.filter, status_type=status_type.value)
+            await self._remove_bot_reaction(message, utils.refresh_emote)
+
+    async def update_status_tasks(self, status_type: StatusType):
+        messages = await utils.OrmBackoffStrategy().run_task(StatusMessage.filter, status_type=status_type.value)
         messages = {message.message_id: message.channel_id for message in messages}
 
-        if status_type == StatusType.BOT_STATUS:
-            self.bot_status_messages = messages
-        else:
-            self.guild_status_messages = messages
+        self.status_messages[status_type] = messages
 
-        status_tasks = [self.update_bot_status] if status_type == StatusType.BOT_STATUS else \
-            [self.update_guilds_status]
+        status_tasks = [self.get_status_update_task(status_type)]
         if messages:
             utils.ensure_tasks_running(status_tasks)
         else:
@@ -630,22 +650,11 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         if auto_update:
             logger.info(f"{ctx.author} adding auto-updated check")
 
-            prev_message_id = await self.save_status_message(message, StatusType.GUILD_STATUS)
-            await self.update_status_messages(StatusType.GUILD_STATUS)
+            await self.save_status_message(message, StatusType.GUILD_STATUS)
+            await self.update_status_tasks(StatusType.GUILD_STATUS)
 
             # Add update info after saving message to DB in case DB errors to prevent misleading info in message
-            embed.timestamp = datetime.utcnow()
-            self.update_message_footer_text(message.id, embed, StatusType.GUILD_STATUS)
-            await message.edit(embed=embed)
-            await self.ensure_correct_message_reactions(message, StatusType.GUILD_STATUS)
-
-            # Update footer and reactions for prev message
-            if prev_message_id:
-                prev_message = await ctx.channel.fetch_message(prev_message_id)
-                embed = prev_message.embeds[0]
-                self.update_message_footer_text(prev_message_id, embed, StatusType.GUILD_STATUS)
-                await prev_message.edit(embed=embed)
-                await self.ensure_correct_message_reactions(prev_message, StatusType.GUILD_STATUS)
+            await self.update_message_footer_reactions(message, StatusType.GUILD_STATUS)
 
     @cog_ext.cog_subcommand(base="check", name="bot",
                             options=[
@@ -669,22 +678,11 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         if auto_update:
             logger.info(f"{ctx.author} adding auto-updated check")
 
-            prev_message_id = await self.save_status_message(message, StatusType.BOT_STATUS)
-            await self.update_status_messages(StatusType.BOT_STATUS)
+            await self.save_status_message(message, StatusType.BOT_STATUS)
+            await self.update_status_tasks(StatusType.BOT_STATUS)
 
             # Add update info after saving message to DB in case DB errors to prevent misleading info in message
-            embed.timestamp = datetime.utcnow()
-            self.update_message_footer_text(message.id, embed, StatusType.BOT_STATUS)
-            await message.edit(embed=embed)
-            await self.ensure_correct_message_reactions(message, StatusType.BOT_STATUS)
-
-            # Update footer and reactions for prev message
-            if prev_message_id:
-                prev_message = await ctx.channel.fetch_message(prev_message_id)
-                embed = prev_message.embeds[0]
-                self.update_message_footer_text(prev_message_id, embed, StatusType.BOT_STATUS)
-                await prev_message.edit(embed=embed)
-                await self.ensure_correct_message_reactions(prev_message, StatusType.BOT_STATUS)
+            await self.update_message_footer_reactions(message, StatusType.BOT_STATUS)
 
     @cog_ext.cog_subcommand(base="auto-updates", name="stop",
                             options=[
@@ -715,7 +713,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
 
         db_message = None
         if db_id is not None:
-            db_message = await utils.default_backoff.run_task(StatusMessage.get_or_none, id=db_id)
+            db_message = await utils.OrmBackoffStrategy().run_task(StatusMessage.get_or_none, id=db_id)
             if db_message is None:
                 raise commands.BadArgument(f"There is no status message with id {db_id}")
 
@@ -728,16 +726,16 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             if not match:
                 raise commands.BadArgument(f"Looks like '{msg_link}' is not a link to discord message")
             ids = match.groupdict()
-            db_message = await utils.default_backoff.run_task(StatusMessage.get_or_none,
-                                                              guild_id=ids['guild_id'],
-                                                              channel_id=ids['channel_id'],
-                                                              message_id=ids['msg_id'])
+            db_message = await utils.OrmBackoffStrategy().run_task(StatusMessage.get_or_none,
+                                                                   guild_id=ids['guild_id'],
+                                                                   channel_id=ids['channel_id'],
+                                                                   message_id=ids['msg_id'])
             if db_message is None:
                 raise commands.BadArgument("Looks like linked message is not a status message with auto-updates")
 
-        await utils.default_backoff.run_task(db_message.delete)
+        await utils.OrmBackoffStrategy().run_task(db_message.delete)
         message_type = StatusType(db_message.status_type)
-        await self.update_status_messages(message_type)
+        await self.update_status_tasks(message_type)
 
         guild = self.bot.get_guild(db_message.guild_id)
         channel = guild.get_channel(db_message.channel_id)
@@ -745,7 +743,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         embed = message.embed
         self.update_message_footer_text(message.id, embed, message_type)
         await message.edit(embed=embed)
-        await self.ensure_correct_message_reactions(message, message_type)
+        await self.ensure_message_reactions(message, message_type)
 
         await ctx.send("Removed message from auto-updates", hidden=True)
 
@@ -776,8 +774,9 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         for message in bot_status_messages:
             guild = self.bot.get_guild(message.guild_id)
             channel = guild.get_channel(message.channel_id)
-            messages_info.append(f"[Message](https://discord.com/channels/{guild.id}/{channel.id}/{message.message_id}) "
-                                 f"in {channel.mention} in {guild} (ID {message.id})")
+            messages_info.append(
+                f"[Message](https://discord.com/channels/{guild.id}/{channel.id}/{message.message_id}) "
+                f"in {channel.mention} in {guild} (ID {message.id})")
         if messages_info:
             embed.add_field(name="Bot status messages", value="\n".join(messages_info), inline=False)
 
@@ -802,14 +801,11 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
 
     @staticmethod
     async def save_status_message(message: discord.Message, status_type: StatusType):
-        status_message = await utils.default_backoff.run_task(StatusMessage.get_or_none,
-                                                              guild_id=message.guild.id,
-                                                              channel_id=message.channel.id,
-                                                              status_type=status_type.value)
-        prev_message_id = None
-        if status_message:
-            prev_message_id = status_message.message_id
-        else:
+        status_message = await utils.OrmBackoffStrategy().run_task(StatusMessage.get_or_none,
+                                                                   guild_id=message.guild.id,
+                                                                   channel_id=message.channel.id,
+                                                                   status_type=status_type.value)
+        if not status_message:
             # Can't use get_or_create since message_id is mandatory and I don't want to make it not mandatory
             status_message = StatusMessage(
                 guild_id=message.guild.id,
@@ -817,8 +813,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                 status_type=status_type.value
             )
         status_message.message_id = message.id
-        await utils.default_backoff.run_task(status_message.save)
-        return prev_message_id
+        await utils.OrmBackoffStrategy().run_task(status_message.save)
 
     @staticmethod
     def ratelimit_check(cooldown, message):

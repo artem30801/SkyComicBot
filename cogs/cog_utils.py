@@ -110,26 +110,46 @@ class DBLogger(logging.getLoggerClass()):
             self._log(important_log_level, msg, args, **kwargs)
 
 
-class BackoffStrategy:
-
-    def __init__(self, max_attempts_amount, base_delay, exponent_base, fail_exception_class):
-        self.max_attempts_amount = max_attempts_amount
+class BackoffStrategyBase:
+    def __init__(self, base_delay=1, max_attempts=None, max_delay=None, exponent=2):
         self.base_delay = base_delay
-        self.exponent_base = exponent_base
+        self.max_attempts = max_attempts
+        self.max_delay = max_delay or float('inf')
+
+        if exponent <= 1:
+            raise ValueError("Exponent must be greater than 1")
+        self.exponent = exponent
+
+        self.attempt = 0
+
+    def get_attempt_delay(self, attempt):
+        delay = self.base_delay * pow(self.exponent, attempt)
+        return min(delay, self.max_delay)
+
+    def reset(self):
+        self.attempt = 0
+
+    def __iter__(self):
+        self.reset()
+        return self
+
+    def __next__(self):
+        self.attempt += 1
+        if self.max_attempts is not None and self.attempt > self.max_attempts:
+            raise StopIteration
+
+        return self.get_attempt_delay(self.attempt)
+
+
+class OrmBackoffStrategy(BackoffStrategyBase):
+    def __init__(self, base_delay=0.5, max_attempts=5, exponent=2,
+                 fail_exception_class=tortoise.exceptions.OperationalError):
+        super().__init__(base_delay=base_delay, max_attempts=max_attempts, exponent=exponent)
         self.exception_class = fail_exception_class
-
-    def attempts(self):
-        attempts_amount = 0
-        while self.max_attempts_amount <= 0 or attempts_amount < self.max_attempts_amount:
-            yield self.get_delay_for_attempt(attempts_amount)
-            attempts_amount += 1
-
-    def get_delay_for_attempt(self, attempt):
-        return self.base_delay * pow(self.exponent_base, attempt)
 
     async def run_task(self, task, *args, **kwargs):
         last_exception = None
-        for delay in self.attempts():
+        for delay in self:
             try:
                 return await task(*args, **kwargs)
             except self.exception_class as exception:
@@ -137,9 +157,6 @@ class BackoffStrategy:
                 await asyncio.sleep(delay)
         # Raise last exception if all attempts failed
         raise last_exception
-
-
-default_backoff = BackoffStrategy(5, 0.5, 2, tortoise.exceptions.OperationalError)
 
 
 async def run(cmd):
