@@ -734,16 +734,14 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                 raise commands.BadArgument("Looks like linked message is not a status message with auto-updates")
 
         await utils.OrmBackoffStrategy().run_task(db_message.delete)
-        message_type = StatusType(db_message.status_type)
-        await self.update_status_tasks(message_type)
+        status_type = StatusType(db_message.status_type)
+        await self.update_status_tasks(status_type)
 
         guild = self.bot.get_guild(db_message.guild_id)
         channel = guild.get_channel(db_message.channel_id)
         message = await channel.fetch_message(db_message.message_id)
-        embed = message.embed
-        self.update_message_footer_text(message.id, embed, message_type)
-        await message.edit(embed=embed)
-        await self.ensure_message_reactions(message, message_type)
+
+        await self.update_message_footer_reactions(message, status_type)
 
         await ctx.send("Removed message from auto-updates", hidden=True)
 
