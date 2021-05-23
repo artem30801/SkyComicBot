@@ -28,13 +28,15 @@ class Reactions(commands.Cog):
         reactions = {("telling",): self.telling,
                      ("wrong layer",): self.wrong_layer,
                      ("hug", "hugs",): self.hug,
+                     ("baby alphys",): self.baby_alphys,
                      ("suselle",): self.suselle,
-                     ("krusele", "kruselle",): self.kruselle,
+                     ("kriselle",): self.kriselle,
                      ("krusie",): self.krusie,
-                     ("krusielle",): self.krusielle,
+                     ("krusielle", "kruselle"): self.krusielle,
                      ("kralsei",): self.kralsei,
                      ("krisusei",): self.krisusei,
                      ("rainbow ralsei", "hyperfloof", "hyperfluff", "polyralsei",): self.hyperfloof,
+                     ("fun gang", ): self.fun_gang,
                      ("shebus", "shaebus", "phanti",): self.phoebus_shanti,
                      ("soriel",): self.soriel,
                      }
@@ -114,6 +116,12 @@ class Reactions(commands.Cog):
     async def hug(self, message):
         await message.add_reaction(self.get_emoji("griffin_hug"))
 
+    async def baby_alphys(self, message):
+        await self.add_emojis(message,
+                              self.get_emoji("griffin_happy"),
+                              '❤',
+                              self.get_emoji("LG_Alphys"))
+
     async def suselle(self, message):
         await self.add_emojis(message,
                               self.get_emoji("PT_armless_babies"),
@@ -121,7 +129,7 @@ class Reactions(commands.Cog):
                               self.get_emoji("PT_excited_noelle")
                               )
 
-    async def kruselle(self, message):
+    async def kriselle(self, message):
         await self.add_emojis(message,
                               self.get_emoji("PT_kris_shrug"),
                               self.get_x_emoji(),
@@ -166,8 +174,17 @@ class Reactions(commands.Cog):
                               self.get_emoji("PT_EsliraFreakout"),
                               self.get_emoji("PT_Fried_Aelsir"),
                               self.get_emoji("PT_Irales_Face"),
-                              self.get_emoji("PT_ScrewItSareli"),
-                              '🍋',  # Yep, that's lemon
+                              self.get_emoji("DEV_SareliAnxious"),
+                              self.get_emoji("DEV_LairseMood"),
+                              )
+
+    async def fun_gang(self, message):
+        await self.add_emojis(message,
+                              self.get_emoji("PT_kris_shrug"),
+                              self.get_emoji("PT_RalseiIdea"),
+                              self.get_emoji("PT_armless_babies"),
+                              self.get_emoji("PT_Perplexed_Lancer"),
+                              self.get_emoji("PT_excited_noelle")
                               )
 
     async def phoebus_shanti(self, message):
