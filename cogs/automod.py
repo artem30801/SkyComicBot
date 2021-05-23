@@ -48,7 +48,7 @@ class StatusType(Enum):
     def get_id(self, obj):
         if self.bucket_type is None:
             return None
-        if self is commands.BucketType.guild:
+        if self.bucket_type is commands.BucketType.guild:
             return (obj.guild or obj.author).id
 
         return NotImplementedError
@@ -234,7 +234,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
     async def update_bot_status(self):
         await self.update_status(StatusType.BOT_STATUS)
 
-    @tasks.loop(hours=1)
+    @tasks.loop(minutes=1)
     async def update_guilds_status(self):
         await self.update_status(StatusType.GUILD_STATUS)
 
@@ -257,7 +257,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
 
     @update_guilds_status.error
     async def update_guilds_status_error(self, exception):
-        await self.update_status_error(exception, StatusType.BOT_STATUS)
+        await self.update_status_error(exception, StatusType.GUILD_STATUS)
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, reaction_payload: discord.RawReactionActionEvent):
