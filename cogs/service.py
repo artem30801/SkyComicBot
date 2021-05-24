@@ -51,7 +51,7 @@ class Service(utils.AutoLogCog, utils.StartupCog):
     async def update(self, ctx: SlashContext):
         """Updates the bot with the latest version from GIT and restarts it"""
         await ctx.defer()
-        output, error = await utils.run(f"(cd {self.bot.current_dir}; git pull)")
+        output, error = await utils.run(f"git pull")
 
         result = ""
         if output:
@@ -61,8 +61,7 @@ class Service(utils.AutoLogCog, utils.StartupCog):
 
         await ctx.send(f"**Pulled updates from git** \n {result or 'No output'}")
 
-        pip_output, error = await utils.run(f"(cd {self.bot.current_dir}; "
-                                            f". ./venv/bin/activate; "
+        pip_output, error = await utils.run(f"(. ./venv/bin/activate; "
                                             f"pip install -r requirements.txt)")
         if not error:
             lines = pip_output.strip().split("\n")

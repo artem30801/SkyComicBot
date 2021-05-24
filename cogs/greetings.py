@@ -37,7 +37,7 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
         utils.StartupCog.__init__(self)
         utils.AutoLogCog.__init__(self, logger)
         self.bot = bot
-        self.activity_file_path = utils.abs_join(bot.current_dir, "last_activity")
+        self.activity_file_path = utils.abs_join("last_activity")
         self._last_greeted_member = None
         self._started_at = None
         self._last_active_at = None

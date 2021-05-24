@@ -373,9 +373,9 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         embed.title = "Bot check results"
 
         no = "Not available"
-        git_hash = (await utils.run(f"(cd {self.bot.current_dir}; git describe --always)"))[0] or no
-        commits_behind = (await utils.run(f"(cd {self.bot.current_dir}; git fetch; "
-                                          f"git rev-list HEAD...origin/master --count)"))[0]
+        git_hash = (await utils.run(f"git describe --always"))[0] or no
+        commits_behind = (await utils.run(f"git fetch; "
+                                          f"git rev-list HEAD...origin/master --count"))[0]
         commits_behind = commits_behind.strip()
         commits_behind = int(commits_behind) or "Up to date" if commits_behind else no
         embed.add_field(name="Version",
@@ -416,9 +416,9 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             memory_p = process.memory_percent()
             cpu_p = process.cpu_percent()
 
-            disk_info = psutil.disk_usage(self.bot.current_dir)
+            disk_info = psutil.disk_usage(os.getcwd())
 
-        storage_size, _ = await utils.run(f"du -s {self.bot.current_dir}")
+        storage_size, _ = await utils.run(f"du -s {os.getcwd()}")
         if storage_size:
             storage_size = int(storage_size.split("\t")[0].strip())
             storage_size = utils.format_size(storage_size * 1024)
