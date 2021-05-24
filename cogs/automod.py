@@ -230,11 +230,11 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         logger.info(f"Updated {updated_count} {status_type} status messages")
         self.status_error_backoff[status_type].reset()
 
-    @tasks.loop(minutes=1)
+    @tasks.loop(minutes=5)
     async def update_bot_status(self):
         await self.update_status(StatusType.BOT_STATUS)
 
-    @tasks.loop(minutes=1)
+    @tasks.loop(hours=1)
     async def update_guilds_status(self):
         await self.update_status(StatusType.GUILD_STATUS)
 
