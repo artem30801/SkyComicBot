@@ -2,6 +2,7 @@
 Description = SkyComicBot
 
 [Service]
+WorkingDirectory=/home/skybot/SkyComicBot/
 ExecStart=/home/skybot/SkyComicBot/venv/bin/python /home/skybot/SkyComicBot/main.py
 Environment=PYTHONUNBUFFERED=1
 Restart=on-failure

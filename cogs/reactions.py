@@ -85,12 +85,10 @@ class Reactions(commands.Cog):
             await channel.send(notify_message)
 
     async def telling(self, message):
-        await send_file(message.channel, abs_join(self.bot.current_dir, "reactions", "telling.gif"),
-                        "thatwouldbetelling.gif")
+        await send_file(message.channel, abs_join("reactions", "telling.gif"), "thatwouldbetelling.gif")
 
     async def wrong_layer(self, message):
-        await send_file(message.channel, abs_join(self.bot.current_dir, "reactions", "wrong_layer.gif"),
-                        "wronglayersong.gif")
+        await send_file(message.channel, abs_join("reactions", "wrong_layer.gif"), "wronglayersong.gif")
 
     def reset_x_emojis(self):
         emojis = ["🇽", "❌", "❎", ]

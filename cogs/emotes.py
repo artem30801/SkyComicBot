@@ -72,7 +72,7 @@ class Emotes(utils.AutoLogCog, utils.StartupCog):
         self.bot = bot
         self.emotes = dict()
 
-        self.emotes_thumbnail = abs_join(self.bot.current_dir, "emotes", "tmp", "thumbnail.png")
+        self.emotes_thumbnail = abs_join("emotes", "tmp", "thumbnail.png")
         self.has_thumbnail = False
 
         utils.ensure_path_dirs(self.emotes_thumbnail)
@@ -81,7 +81,7 @@ class Emotes(utils.AutoLogCog, utils.StartupCog):
         await self.load_emotes()
 
     async def load_emotes(self):
-        files = multi_glob(*(abs_join(self.bot.current_dir, "emotes", f"*{ext}") for ext in image_exts))
+        files = multi_glob(*(abs_join("emotes", f"*{ext}") for ext in image_exts))
 
         self.emotes = {os.path.splitext(os.path.split(filename)[1])[0].replace("_", " ").strip().lower():
                            filename for filename in files}
@@ -132,7 +132,7 @@ class Emotes(utils.AutoLogCog, utils.StartupCog):
         total_height = sum(row_heights) + (padding + v_padding) * len(image_rows)
         canvas = Image.new('RGBA', (frame_width, total_height))
         draw = ImageDraw.Draw(canvas)
-        font = ImageFont.truetype(utils.abs_join(self.bot.current_dir, "v_ComicGeek_v1.0.ttf"), size=48)
+        font = ImageFont.truetype(utils.abs_join("v_ComicGeek_v1.0.ttf"), size=48)
         y = 0
         for row_num, row in enumerate(image_rows):
             for col_num, item in enumerate(row.items()):
@@ -276,7 +276,7 @@ class Emotes(utils.AutoLogCog, utils.StartupCog):
                 if response.ok:
                     attachment = await response.read()
 
-        with open(abs_join(self.bot.current_dir, "emotes", filename), 'wb') as f:
+        with open(abs_join("emotes", filename), 'wb') as f:
             f.write(attachment)
         logger.important(f"Saved emote '{name}' as '{filename}'")
 

@@ -24,8 +24,11 @@ class SkyComicBot(commands.Bot):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         SlashCommand(self, override_type=True)
+
+        current_dir = os.path.dirname(os.path.realpath(__file__))
+        os.chdir(current_dir)
+
         self.version = version
-        self.current_dir = os.path.dirname(os.path.realpath(__file__))
         self.token = None
 
         self.config = {}
@@ -33,11 +36,8 @@ class SkyComicBot(commands.Bot):
 
         self.initial_extensions = []
 
-    def real_path(self, *paths):
-        return utils.abs_join(self.current_dir, *paths)
-
     def load_config(self, path):
-        with open(self.real_path(path), "r") as f:
+        with open(utils.abs_join(path), "r") as f:
             self.config = json.load(f)
 
         self.owner_ids = set(self.config["discord"]["owner_ids"])
@@ -63,16 +63,16 @@ async def main():
                       intents=discord.Intents.all())
 
     now = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    utils.ensure_dir(utils.abs_join(bot.current_dir, "logs"))
+    utils.ensure_dir(utils.abs_join("logs"))
 
     logging.setLoggerClass(utils.DBLogger)
     log_handlers = [
-        logging.FileHandler(bot.real_path("logs", f"{now}.log")),
+        logging.FileHandler(utils.abs_join("logs", f"{now}.log")),
         logging.StreamHandler()
     ]
     if "logging" in bot.config and "socket_handlers" in bot.config["logging"]:
         for num, handler in enumerate(bot.config["logging"]["socket_handlers"], start=1):
-            buffer = bot.real_path("logs", f"log_buffer_{num}.bin")
+            buffer = utils.abs_join("logs", f"log_buffer_{num}.bin")
             socket_handler = BufferingSocketHandler(handler["host"], handler["port"], buffer)
             socket_handler.closeOnError = True
             log_handlers.append(socket_handler)
