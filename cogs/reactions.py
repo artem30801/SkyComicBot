@@ -36,11 +36,34 @@ class Reactions(commands.Cog):
                      ("kralsei",): self.kralsei,
                      ("krisusei",): self.krisusei,
                      ("rainbow ralsei", "hyperfloof", "hyperfluff", "polyralsei",): self.hyperfloof,
-                     ("fun gang", ): self.fun_gang,
+                     ("fun gang",): self.fun_gang,
                      ("shebus", "shaebus", "phanti",): self.phoebus_shanti,
                      ("soriel",): self.soriel,
                      }
-        self._reactions = [(re_contains(words), react) for words, react in reactions.items()]
+        self._keyword_reactions = [(re_contains(words), react) for words, react in reactions.items()]
+
+        self._emoji_reactions = {"griffin_hug": self.hug,
+                                 }
+
+    @commands.Cog.listener()
+    async def on_raw_reaction_add(self, reaction_payload: discord.RawReactionActionEvent):
+        if reaction_payload.member.bot:
+            return
+
+        react_func = self._emoji_reactions.get(reaction_payload.emoji.name, None)
+        if react_func is None:
+            return
+
+        channel = await self.bot.fetch_channel(reaction_payload.channel_id)
+
+        if reaction_payload.guild_id:
+            if self.bot.get_cog("Channels").is_no_reactions_channel(channel):
+                return
+
+        message = await channel.fetch_message(reaction_payload.message_id)
+        logger.debug(f"Matched reaction to '{message}' message (matches '{reaction_payload.emoji}')")
+
+        await react_func(message)
 
     @commands.Cog.listener()
     async def on_message(self, message: Message):
@@ -55,7 +78,7 @@ class Reactions(commands.Cog):
                 await self.notify_update(message)
 
         to_react = []
-        for re_expression, react_func in self._reactions:
+        for re_expression, react_func in self._keyword_reactions:
             if (match := re_expression.search(message.content)) is not None:
                 logger.debug(f"Matched reaction to '{message.content}' message (matches '{re_expression.pattern}')")
                 to_react.append((match.start(), re_expression, react_func))
