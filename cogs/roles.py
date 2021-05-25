@@ -229,6 +229,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         if member and not isinstance(member, discord.Member):
             raise commands.BadArgument(f"Failed to get member '{member}' info!")
 
+        await ctx.defer(hidden=True)
         member = member or ctx.author
 
         logger.debug(f"{self.format_caller(ctx)} checked {member} roles")
@@ -246,6 +247,8 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
     @cog_ext.cog_subcommand(base="role", name="list", guild_ids=guild_ids)
     async def role_list(self, ctx: SlashContext):
         """Shows list of all roles available to you. Roles are grouped by role group"""
+        await ctx.defer()
+
         embed = utils.bot_embed(self.bot)
         embed.title = "Available roles:"
         db_groups = await RoleGroup.all()
@@ -270,6 +273,8 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
     @has_server_perms()
     async def role_database(self, ctx: SlashContext):
         """Shows list of roles in internal DB with additional data"""
+        await ctx.defer(hidden=True)
+
         db_roles = await Role.all()
         role_mentions = [f"{self.get_role_repr(ctx, role.name)} {await db_utils.format_instance(role)}"
                          for role in db_roles]
@@ -292,6 +297,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
     async def group_info(self, ctx: SlashContext, group):
         """Shows info about specified group"""
         logger.debug(f"{self.format_caller(ctx)} checked group with ID '{group}'")
+        await ctx.defer()
 
         group = await RoleGroup.get(id=group)
         logger.debug(f"Group '{group.id}' is '{group.name}'")
@@ -311,6 +317,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
     @cog_ext.cog_subcommand(base="role", subcommand_group="group", name="list", guild_ids=guild_ids)
     async def group_list(self, ctx: SlashContext):
         """Shows a list of role groups with additional data"""
+        await ctx.defer(hidden=True)
 
         async def display_group(group):
             state = await self.get_group_state(group)
@@ -330,6 +337,8 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
     async def group_add(self, ctx: SlashContext, *args, **params):
         """Adds new role group to internal DB"""
         logger.db(f"{self.format_caller(ctx)} trying to add group with args '{args}' and params '{params}'")
+
+        await ctx.defer(hidden=True)
 
         params = await self.group_processor.process(params)
         instance = await RoleGroup.create(**params)
@@ -354,6 +363,8 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         """Removes specified group from internal DB"""
         logger.db(f"{self.format_caller(ctx)} trying to remove group with ID '{group}'")
 
+        await ctx.defer(hidden=True)
+
         group = await RoleGroup.get(id=group)
         name = group.name
         logger.db(f"Group {group.id} is '{name}'")
@@ -373,6 +384,8 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
     async def group_edit(self, ctx: SlashContext, *args, **params):
         """Edits specified role group"""
         logger.db(f"{self.format_caller(ctx)} trying to edit group with args '{args}' and params '{params}")
+
+        await ctx.defer(hidden=True)
 
         params = await self.group_processor.process(params)
         group = params.pop("group")
@@ -395,6 +408,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         logger.db(f"{self.format_caller(ctx)} trying to archive group with ID '{group}'")
 
         await ctx.defer(True)
+
         group = await RoleGroup.get(id=group)
         archive = bool(archive)
         logger.db(f"Group {group.id} is '{group.name}'")
@@ -526,6 +540,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         if not isinstance(role, discord.Role):
             raise commands.BadArgument(f"Failed to get role '{role}' info!")
 
+        await ctx.defer(hidden=True)
         member = member or ctx.author
         logger.info(f"{self.format_caller(ctx)} trying to remove role '{role}' from {member}")
 
@@ -584,7 +599,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
             raise commands.BadArgument(f"Failed to get role '{role}' info!")
 
         logger.db(f"{self.format_caller(ctx)} trying to snapshot role '{role}' from '{ctx.guild}'")
-        # await ctx.defer(hidden=True)
+        await ctx.defer(hidden=True)
         if group:
             group = await RoleGroup.get_or_none(id=group)
         await self.snapshot_role(ctx, role, group)
@@ -660,6 +675,8 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         """Completely removes role from internal DB"""
         logger.db(f"{self.format_caller(ctx)} trying to delete role '{role}'")
 
+        await ctx.defer(hidden=True)
+
         role = (await self.role_processor.process({"role": role}))["role"]
         if not role.archived:
             logger.warning(f"Can't delete role '{role.name}', it is not archived!")
@@ -733,6 +750,8 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
             logger.warning("Sider group is empty")
             raise commands.CheckFailure(
                 "Sorry, but this command is unavailable as there is no **Sider** role group yet.")
+
+        await ctx.defer()
 
         member = ctx.author
         group = self._sider_group
