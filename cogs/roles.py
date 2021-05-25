@@ -191,7 +191,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
     async def remove_conflicting_roles(ctx, member: discord.Member, group):
         db_roles = await group.roles
         roles = (discord.utils.get(ctx.guild.roles, name=db_role.name) for db_role in db_roles if not db_role.archived)
-        roles = [role for role in roles if role is not None]
+        roles = [role for role in roles if role is not None and member.has_role(role)]
         if roles:
             await member.remove_roles(*roles)
             logger.debug(f"Removed roles from group {group.name} from {ctx.guild}>{member}")
