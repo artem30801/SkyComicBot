@@ -188,13 +188,10 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
                     logger.warning(f"Can't rename role {name} at {guild}")
 
     @staticmethod
-    async def remove_conflicting_roles(ctx, member: discord.Member, group: RoleGroup, ignore_role=None):
+    async def remove_conflicting_roles(ctx, member: discord.Member, group):
         db_roles = await group.roles
         roles = (discord.utils.get(ctx.guild.roles, name=db_role.name) for db_role in db_roles if not db_role.archived)
-        roles = (role for role in roles if role is not None and member.has_role(role))
-        if ignore_role:
-            roles = [role for role in roles if role != ignore_role]
-
+        roles = [role for role in roles if role is not None and member.has_role(role)]
         if roles:
             await member.remove_roles(*roles)
             logger.debug(f"Removed roles from group {group.name} from {ctx.guild}>{member}")
@@ -511,7 +508,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         group = await db_role.group
         if group.exclusive:
             logger.info(f"Removing roles, conflicting with {role} (if any)")
-            await self.remove_conflicting_roles(ctx, member, group, ignore_role=role)
+            await self.remove_conflicting_roles(ctx, member, group)
 
         await member.add_roles(role)
         logger.info(f"Assigned role '{role}' to {member}")
@@ -780,13 +777,13 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
             await ctx.send(f"Aren't you already a {side.name}, {member.display_name}?")
             return
 
-        role = discord.utils.get(ctx.guild.roles, name=side.name)
+        await self.remove_conflicting_roles(ctx, member, group)
 
+        role = discord.utils.get(ctx.guild.roles, name=side.name)
         if role is None:
             logger.warning(f"Role with name '{side.name}'' not found")
             raise commands.BadArgument(f"Sorry, but there is no role for **{side.name}** on this server yet")
 
-        await self.remove_conflicting_roles(ctx, member, group, ignore_role=role)
         await member.add_roles(role)
 
         if "Nixside" in previous_roles and role.name == "Drakeside":
