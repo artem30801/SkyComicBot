@@ -2,7 +2,8 @@ wheel
 nest_asyncio
 tortoise-orm[aiomysql]
 discord.py
-git+https://github.com/artem30801/discord-py-slash-commandaiohttp
+git+https://github.com/artem30801/discord-py-slash-command
+aiohttp
 python-dateutil
 fuzzywuzzy
 colour

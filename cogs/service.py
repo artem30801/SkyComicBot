@@ -62,7 +62,7 @@ class Service(utils.AutoLogCog, utils.StartupCog):
         await ctx.send(f"**Pulled updates from git** \n {result or 'No output'}")
 
         pip_output, error = await utils.run(f"(. ./venv/bin/activate; "
-                                            f"pip install -r requirements.txt)")
+                                            f"pip install --ignore-installed -r requirements.txt)")
         if not error:
             lines = pip_output.strip().split("\n")
             if (last := lines[-1].strip()).startswith("Successfully installed"):
