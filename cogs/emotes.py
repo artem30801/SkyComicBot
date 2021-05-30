@@ -64,7 +64,6 @@ class EmoteConverter(commands.Converter):
 class Emotes(utils.AutoLogCog, utils.StartupCog):
     """Emote pictures sending and managing"""
 
-    # :griffin_hug:
     def __init__(self, bot):
         utils.AutoLogCog.__init__(self, logger)
         utils.StartupCog.__init__(self)

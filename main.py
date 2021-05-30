@@ -13,7 +13,6 @@ from tortoise import Tortoise
 import cogs.cog_utils as utils
 from cogs.logging_utils import BufferingSocketHandler
 
-# from cogs.comics import Comics
 
 version = "3.7.1"  # bump this with update releases
 
@@ -93,7 +92,7 @@ async def main():
 
     initial_extensions = ["cogs.errors", "cogs.permissions", "cogs.service", "cogs.channels",
                           "cogs.greetings", "cogs.automod", "cogs.timezones",
-                          "cogs.reactions", "cogs.emotes", "cogs.roles"]
+                          "cogs.reactions", "cogs.emotes", "cogs.roles", "cogs.games"]
 
     bot.load_initial_extensions(initial_extensions)
 
