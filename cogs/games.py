@@ -25,7 +25,7 @@ class Games(utils.AutoLogCog, utils.StartupCog):
         utils.StartupCog.__init__(self)
 
         self.bot = bot
-        self.timeout = 3 * 60
+        self.timeout = 15 * 60
 
     @staticmethod
     def rsp_winner(moves):
