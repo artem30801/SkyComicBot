@@ -79,7 +79,7 @@ class Games(utils.AutoLogCog, utils.StartupCog):
                 else:
                     text += f"\n Haven't made a move yet!"
             else:
-                text = "Nobody wanted tp play :(" if is_ended else "Free spot!\nMake a move to join the game!"
+                text = "Nobody wanted to play :(" if is_ended else "Free spot!\nMake a move to join the game!"
 
             title = f"Player {i + 1}"
             if winner_index == i:
