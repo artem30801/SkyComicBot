@@ -270,7 +270,7 @@ class RPSGame(TwoPlayerGame):
 
     def get_winner(self):
         winner, message = self._get_winner()
-        winner_index = self.moves.index(winner)
+        winner_index = self.moves.index(winner) if winner is not None else None
         return winner_index, message
 
     def _get_winner(self):
