@@ -133,7 +133,7 @@ class ModelParamConverter(ParamConverter):
 
     def _get_help_field(self, key, field):
         extras = []
-        field_type = field.python_type.__name__
+        field_type = field.model.__name__
         if "url" in key:  # self.is_field(field, UrlConverter) and not self.is_field(field, FileConverter):
             field_type = "Url"
             extras.append("must be a valid link (url address)")
