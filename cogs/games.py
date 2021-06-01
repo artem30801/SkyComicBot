@@ -300,10 +300,13 @@ class TTTGame(TwoPlayerGame):
 
     empty_tile = " "
 
-    def __init__(self, ctx, cog, players=None, size=3):
+    def __init__(self, ctx, cog, players=None, size=3, winning_row=3):
         super().__init__(ctx, cog, players)
         self.player_states[0] = PlayerStates.waiting_move
         self.size = size
+
+        winning_row = winning_row or (size - 1 if size > 3 else size)
+        self.winning_row = min(winning_row, size)
 
         self.winner_index = None
         self.move_count = 0
@@ -368,7 +371,7 @@ class TTTGame(TwoPlayerGame):
     def check_line(self, move_str, i, j, dx=0, dy=0):
         count = self.check_line_side(move_str, i, j, dx, dy) + \
                 self.check_line_side(move_str, i, j, dx * -1, dy * -1) - 1
-        return count == self.size
+        return count >= self.winning_row
 
     def check_line_side(self, move_str, i, j, dx=0, dy=0):
         count = 0
@@ -382,6 +385,16 @@ class TTTGame(TwoPlayerGame):
             j += dy
 
         return count
+
+    def make_embed(self):
+        embed = super().make_embed()
+        embed.insert_field_at(0, name="Game rules",
+                              value=f"Grid size: **{self.size}/{self.size}**\n"
+                                    f"Winning row size: **{self.winning_row}**\n"
+                                    f"The player who succeeds in placing **{self.winning_row}** of their marks "
+                                    f"in a diagonal, horizontal, or vertical row is the winner.",
+                              inline=False)
+        return embed
 
     def additional_player_text(self, player_index):
         if self.state is GameStates.has_winner:
@@ -408,7 +421,7 @@ class Games(utils.AutoLogCog, utils.StartupCog):
         utils.StartupCog.__init__(self)
 
         self.bot = bot
-        self.global_timeout = 15 * 60
+        self.global_timeout = 20 * 60
         self.move_timeout = 1 * 60
 
     async def check_2_players(self, ctx, player1, player2):
@@ -451,9 +464,20 @@ class Games(utils.AutoLogCog, utils.StartupCog):
                                     description="Size of the field",
                                     option_type=int,
                                     required=False,
-                                    choices=[create_choice(name="3/3", value=3),
+                                    choices=[create_choice(name="tic-tac", value=2),
+                                             create_choice(name="3/3", value=3),
                                              create_choice(name="4/4", value=4),
                                              create_choice(name="5/5", value=5),
+                                             ]
+                                ),
+                                create_option(
+                                    name="winning_row",
+                                    description="Length of consecutive row to win",
+                                    option_type=int,
+                                    required=False,
+                                    choices=[create_choice(name="3", value=3),
+                                             create_choice(name="4", value=4),
+                                             create_choice(name="5", value=5),
                                              ]
                                 ),
                                 create_option(
@@ -470,10 +494,10 @@ class Games(utils.AutoLogCog, utils.StartupCog):
                                 ),
                             ],
                             guild_ids=guild_ids)
-    async def tic_tac_toe(self, ctx, player1=None, player2=None, size=3):
+    async def tic_tac_toe(self, ctx, size=3, winning_row=None, player1=None, player2=None, ):
         """Multiplayer game! Tic-tac-toe! Noughts and crosses! Xs and Os! Play with friends!"""
         players = await self.check_2_players(ctx, player1, player2)
-        game = TTTGame(ctx, self, players, size)
+        game = TTTGame(ctx, self, players, size, winning_row)
         await game.play()
 
 
