@@ -9,6 +9,7 @@ from discord_slash.utils.manage_components import create_actionrow, create_butto
 
 import random
 import enum
+import itertools
 from datetime import datetime, timedelta
 
 import cogs.cog_utils as utils
@@ -30,9 +31,10 @@ class GameStates(enum.Enum):
 
 class PlayerStates(enum.Enum):
     no_player = -1
-    waiting_move = 0
-    skipped_move = 1
-    made_move = 2
+    waiting_first_move = 0
+    waiting_move = 1
+    skipped_move = 2
+    made_move = 3
 
 
 class NoFreePlayerSlots(discord.DiscordException):
@@ -99,6 +101,25 @@ class UnoGame:
         pass
 
 
+class Player:
+    def __init__(self, member=None):
+        self.state = PlayerStates.waiting_move
+        self.member = member
+        self.new = True
+
+        self.notify_task = None
+
+    def check_new(self):
+        if self.new:
+            self.new = False
+            return True
+        return False
+
+    async def notify(self):
+        await asyncio.sleep(1 * 60)
+        # todo
+
+
 class Game:
     command_name: str
     game_title: str
@@ -112,19 +133,19 @@ class Game:
 
         self.max_players = 0 or self.max_players
         self.players = [None] * self.max_players
-        self.player_states = [PlayerStates.no_player] * self.max_players
+        self._player_mapping = {}
+        self._next_index = itertools.count()
 
     def get_player_index(self, member: discord.Member):
         try:
-            player_index = self.players.index(member)
-        except ValueError:  # sender is not in players list
-
-            try:
-                player_index = self.players.index(None)
-            except ValueError:
+            player_index = self._player_mapping[member.id]
+        except KeyError:  # sender is not in players list
+            if len(self._player_mapping) == self.max_players:
                 raise NoFreePlayerSlots
-            else:
-                self.players[player_index] = member  # new player joined
+
+            player_index = next(self._next_index)
+            self.players[player_index] = Player(member)  # new player joined
+            self._player_mapping[member.id] = player_index
 
         return player_index
 
@@ -137,7 +158,7 @@ class Game:
                            hidden=True)
             return
 
-        if self.player_states[player_index] is not PlayerStates.waiting_move:
+        if self.players[player_index].state is not PlayerStates.waiting_move:
             await ctx.send("You already made your move! Wait for your opponent.", hidden=True)
             return
 
@@ -145,15 +166,6 @@ class Game:
 
     def get_next_player(self, player_index):
         raise NotImplemented
-
-
-class TwoPlayerGame(Game):
-    def __init__(self, ctx, cog, players=None):
-        self.max_players = 2
-        super().__init__(ctx, cog)
-        self.players = players or self.players
-
-        self.buttons = []
 
     async def play(self):
         embed = self.make_embed()
@@ -182,6 +194,18 @@ class TwoPlayerGame(Game):
         raise NotImplementedError
 
     def make_embed(self):
+        raise NotImplementedError
+
+
+class TwoPlayerGame(Game):
+    def __init__(self, ctx, cog, players=None):
+        self.max_players = 2
+        super().__init__(ctx, cog)
+        self.players = players or self.players
+
+        self.buttons = []
+
+    def make_embed(self):
         embed = utils.bot_embed(self.cog.bot)
         embed.title = self.game_title
 
@@ -189,9 +213,11 @@ class TwoPlayerGame(Game):
         if self.state is GameStates.has_winner:
             winner_index, win_text = self.get_winner()
             if winner_index is not None:
-                embed.add_field(name=f"🎉 {self.players[winner_index].name} won! 🎉",
-                                value=win_text.format(self.players[winner_index].display_name,
-                                                      self.players[self.get_next_player(winner_index)].display_name),
+                embed.add_field(name=f"🎉 {self.players[winner_index].member.name} won! 🎉",
+                                value=win_text.format(
+                                    self.players[winner_index].member.display_name,
+                                    self.players[self.get_next_player(winner_index)].member.display_name
+                                ),
                                 inline=False)
             else:
                 embed.add_field(name="Draw!", value=win_text, inline=False)
@@ -207,7 +233,7 @@ class TwoPlayerGame(Game):
 
         for i, player in enumerate(self.players):
             if player:
-                text = f"{player.mention}\n{player}"
+                text = f"{player.member.mention}\n{player.member}"
                 text += self.additional_player_text(i)
             else:
                 text = "Nobody wanted to play :(" if self.state is GameStates.game_timeout \
@@ -242,7 +268,6 @@ class RPSGame(TwoPlayerGame):
         super().__init__(ctx, cog, players)
 
         self.moves = [None, None]
-        self.player_states = [PlayerStates.waiting_move] * self.max_players
 
         self.buttons = [create_actionrow(
             create_button(style=ButtonStyle.gray, label="Rock", emoji="🪨"),
@@ -259,7 +284,7 @@ class RPSGame(TwoPlayerGame):
 
         move_str = self.moves_binding[button_ctx.custom_id]
         self.moves[player_index] = move_str
-        self.player_states[player_index] = PlayerStates.made_move
+        self.players[player_index].state = PlayerStates.made_move
         logger.debug(f"Player {player_index} ({button_ctx.author}) made a move: {move_str} ")
 
         if all(self.moves):
@@ -288,9 +313,9 @@ class RPSGame(TwoPlayerGame):
     def additional_player_text(self, player_index):
         if self.state is GameStates.has_winner:
             return f"\n Made a move: {rsp_emojis[self.moves[player_index]]}"
-        elif self.player_states[player_index] is PlayerStates.made_move:
+        elif self.players[player_index].state is PlayerStates.made_move:
             return "\n Already made a move!"
-        elif self.player_states[player_index] is PlayerStates.waiting_move:
+        elif self.players[player_index].state is PlayerStates.waiting_move:
             return f"\n Haven't made a move yet!"
 
 
@@ -302,7 +327,6 @@ class TTTGame(TwoPlayerGame):
 
     def __init__(self, ctx, cog, players=None, size=3, winning_row=3):
         super().__init__(ctx, cog, players)
-        self.player_states[0] = PlayerStates.waiting_move
         self.size = size
 
         winning_row = winning_row or (size - 1 if size > 3 else size)
@@ -332,17 +356,28 @@ class TTTGame(TwoPlayerGame):
         if (player_index := await self.check_player_index(button_ctx)) is None:
             return
 
+        player = self.players[player_index]
         i, j = self.moves_binding[button_ctx.custom_id]
         button = self.get_button(i, j)
         if button["label"] != self.empty_tile:
+            if player.check_new():
+                await button_ctx.defer(edit_origin=True)
+                embed = self.make_embed()
+                await button_ctx.edit_origin(embed=embed)
+
             await button_ctx.send("Sorry, but this tile is already taken! Make another move!", hidden=True)
             return
+
+        await button_ctx.defer(edit_origin=True)
+
         move_str, color = self.player_place(player_index)
         button["label"] = move_str
         button["style"] = color
 
-        self.player_states[player_index] = PlayerStates.made_move
-        self.player_states[self.get_next_player(player_index)] = PlayerStates.waiting_move
+        player.state = PlayerStates.made_move
+        boy_next_door = self.players[self.get_next_player(player_index)]
+        if boy_next_door:
+            boy_next_door.state = PlayerStates.waiting_move
 
         self.move_count += 1
 
@@ -403,9 +438,9 @@ class TTTGame(TwoPlayerGame):
             else:
                 return "\n Didn't win this time"
 
-        elif self.player_states[player_index] is PlayerStates.made_move:
+        elif self.players[player_index].state is PlayerStates.made_move:
             return "\n Already made a move!"
-        elif self.player_states[player_index] is PlayerStates.waiting_move:
+        elif self.players[player_index].state is PlayerStates.waiting_move:
             return f"\n Make your move now!"
 
     def get_player_title(self, player_index):
@@ -422,7 +457,8 @@ class Games(utils.AutoLogCog, utils.StartupCog):
 
         self.bot = bot
         self.global_timeout = 20 * 60
-        self.move_timeout = 1 * 60
+        self.notify_timeout = 1 * 60
+        self.move_timeout = 5 * 60
 
     async def check_2_players(self, ctx, player1, player2):
         players = [player1, player2]
