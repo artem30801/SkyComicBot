@@ -5,7 +5,8 @@ import discord
 from discord.ext import commands
 from discord_slash import cog_ext, SlashContext, ComponentContext
 from discord_slash.utils.manage_commands import create_option, create_choice
-from discord_slash.utils.manage_components import create_actionrow, create_button, ButtonStyle, wait_for_any_component
+from discord_slash.utils.manage_components import create_actionrow, create_button, emoji_to_dict, ButtonStyle, \
+    wait_for_any_component
 
 import random
 import enum
@@ -107,7 +108,8 @@ class Player:
         self.member = member
         self.new = True
 
-        self.notify_task = None
+        self._notify_task = None
+        self._notify_message: discord.Message = None
 
     def check_new(self):
         if self.new:
@@ -115,9 +117,21 @@ class Player:
             return True
         return False
 
-    async def notify(self):
-        await asyncio.sleep(1 * 60)
-        # todo
+    def notify_start(self, message, delay, delete_after):
+        self._notify_task = asyncio.create_task(self.notify(message, delay, delete_after))
+
+    async def notify_cancel(self):
+        if self._notify_task is not None:
+            self._notify_task.cancel()
+
+        if self._notify_message is not None:
+            await self._notify_message.delete()
+            self._notify_message = None
+
+    async def notify(self, message, delay, delete_after):
+        await asyncio.sleep(delay)
+        self._notify_message = await message.channel.send(content=f"{self.member.mention}, it's your move!",
+                                                          delete_after=delete_after)
 
 
 class Game:
@@ -135,6 +149,8 @@ class Game:
         self.players = [None] * self.max_players
         self._player_mapping = {}
         self._next_index = itertools.count()
+
+        self.game_message = None
 
     def get_player_index(self, member: discord.Member):
         try:
@@ -169,11 +185,11 @@ class Game:
 
     async def play(self):
         embed = self.make_embed()
-        message = await self.ctx.send(embed=embed, components=self.buttons)
+        self.game_message = await self.ctx.send(embed=embed, components=self.buttons)
 
         to_edit = {}
         try:
-            await asyncio.wait_for(self.wait_moves(message), timeout=self.cog.global_timeout)
+            await asyncio.wait_for(self.wait_moves(self.game_message), timeout=self.cog.global_timeout)
         except (asyncio.CancelledError, asyncio.TimeoutError):
             self.state = GameStates.game_timeout
             to_edit["embed"] = self.make_embed()
@@ -183,7 +199,7 @@ class Game:
                 button["disabled"] = True
         to_edit["components"] = self.buttons
 
-        await message.edit(**to_edit)
+        await self.game_message.edit(**to_edit)
 
     async def wait_moves(self, message):
         while self.state is GameStates.waiting_move:
@@ -335,18 +351,21 @@ class TTTGame(TwoPlayerGame):
         self.winner_index = None
         self.move_count = 0
 
+        self.empty_tile = emoji_to_dict(discord.utils.get(self.cog.bot.emojis, name="blank"))
+        self._o_emoji = emoji_to_dict(discord.utils.get(self.cog.bot.emojis, name="ttt_circle"))
+
         self.buttons = []
         self.moves_binding = {}
         for i in range(size):
             row = []
             for j in range(size):
-                button = create_button(style=ButtonStyle.gray, label=self.empty_tile)
+                button = create_button(style=ButtonStyle.gray, emoji=self.empty_tile)
                 row.append(button)
                 self.moves_binding[button["custom_id"]] = (i, j)
             self.buttons.append(create_actionrow(*row))
 
     def player_place(self, player_index):
-        placement = [("O", ButtonStyle.green), ("X", ButtonStyle.red)]
+        placement = [(self._o_emoji, ButtonStyle.green), ("✖️", ButtonStyle.red)]
         return placement[player_index]
 
     def get_button(self, i, j):
@@ -359,7 +378,7 @@ class TTTGame(TwoPlayerGame):
         player = self.players[player_index]
         i, j = self.moves_binding[button_ctx.custom_id]
         button = self.get_button(i, j)
-        if button["label"] != self.empty_tile:
+        if button["emoji"] != self.empty_tile:
             if player.check_new():
                 await button_ctx.defer(edit_origin=True)
                 embed = self.make_embed()
@@ -371,17 +390,21 @@ class TTTGame(TwoPlayerGame):
         await button_ctx.defer(edit_origin=True)
 
         move_str, color = self.player_place(player_index)
-        button["label"] = move_str
+        button["emoji"] = emoji_to_dict(move_str)
         button["style"] = color
 
         player.state = PlayerStates.made_move
-        boy_next_door = self.players[self.get_next_player(player_index)]
+        await player.notify_cancel()
+
+        boy_next_door: Player = self.players[self.get_next_player(player_index)]
         if boy_next_door:
             boy_next_door.state = PlayerStates.waiting_move
+            boy_next_door.notify_start(self.game_message, self.cog.notify_timeout, self.cog.move_timeout)
 
         self.move_count += 1
 
-        logger.debug(f"Player {player_index} ({button_ctx.author}) made a move: {move_str} ({i}, {j}) ")
+        logger.debug(f"Player {player_index} ({button_ctx.author}) made a move: "
+                     f"{('O', 'X')[player_index]} ({i}, {j}) ")
 
         if self.check_winner(move_str, i, j):
             self.state = GameStates.has_winner
@@ -411,7 +434,7 @@ class TTTGame(TwoPlayerGame):
     def check_line_side(self, move_str, i, j, dx=0, dy=0):
         count = 0
         while 0 <= i < self.size and 0 <= j < self.size:
-            if self.get_button(i, j)["label"] == move_str:
+            if self.get_button(i, j)["emoji"]["name"] == move_str:
                 count += 1
             else:
                 return count
