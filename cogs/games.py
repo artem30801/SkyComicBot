@@ -278,7 +278,7 @@ class MineSweeperGame(SinglePlayerGame):
         super().__init__(ctx, cog, player)
 
         self.size = 5
-        self.mines_count = 5 or min(mines, 10)
+        self.mines_count = min(mines or 5, 10)
 
         self.won = False
 
@@ -397,6 +397,17 @@ class MineSweeperGame(SinglePlayerGame):
             return True, "{} swept all mines like a pro"
         else:
             return False, "{} exploded on a mine. F."
+
+    def make_embed(self):
+        embed = super().make_embed()
+        embed.insert_field_at(0, name="Game rules",
+                              value=f"Grid size: **{self.size}/{self.size}**\n"
+                                    f"Mines count: **{self.mines_count}**\n"
+                                    f"The objective of the game is to clear the board "
+                                    f"containing **{self.mines_count}** hidden mines without detonating any of them. "
+                                    f"Digit in the square indicates number of adjacent mines to this square. Good luck!",
+                              inline=False)
+        return embed
 
 
 class TwoPlayerGame(Game):
@@ -761,14 +772,14 @@ class Games(utils.AutoLogCog, utils.StartupCog):
                                              ]
                                 ),
                                 create_option(
-                                    name="player",
+                                    name="for_me",
                                     description="Is the game for you or of anyone to take",
                                     option_type=bool,
                                     required=False,
                                 ),
                             ],
                             guild_ids=guild_ids)
-    async def minesweeper(self, ctx, mines=3, for_me=True):
+    async def minesweeper(self, ctx, mines=3, for_me=False):
         """Mini-minesweeper! Minisweeper?"""
         member = ctx.author if for_me else None
         game = MineSweeperGame(ctx, self, mines, member)
