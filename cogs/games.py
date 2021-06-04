@@ -11,6 +11,7 @@ from discord_slash.utils.manage_components import create_actionrow, create_butto
 import random
 import enum
 import itertools
+from contextlib import suppress
 from datetime import datetime, timedelta
 
 import cogs.cog_utils as utils
@@ -125,7 +126,8 @@ class Player:
             self._notify_task.cancel()
 
         if self._notify_message is not None:
-            await self._notify_message.delete()
+            with suppress(discord.NotFound):
+                await self._notify_message.delete()
             self._notify_message = None
 
     async def notify(self, message, delay, delete_after):
