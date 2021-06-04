@@ -270,10 +270,6 @@ class SinglePlayerGame(Game):
         raise NotImplementedError
 
 
-# class MineSweeperStates(enum.IntEnum):
-#     hidden = 0
-
-
 class MineSweeperGame(SinglePlayerGame):
     command_name = "minesweeper"
     game_title = "💥 Minesweeper! 💥"
@@ -310,8 +306,7 @@ class MineSweeperGame(SinglePlayerGame):
             i, j = random.randrange(0, self.size), random.randrange(0, self.size)
             if self.field[i][j] < 0:
                 continue
-            if (abs(origin_i - i) == 1) and (abs(origin_j - j) == 1):
-                # if (abs(origin_i-i) + abs(origin_j-j)) <= 1:
+            if (abs(origin_i - i) <= 1) and (abs(origin_j - j) <= 1):
                 continue
 
             mines += 1
