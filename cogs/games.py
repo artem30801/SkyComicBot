@@ -194,6 +194,9 @@ class Game:
             self.state = GameStates.game_timeout
             to_edit["embed"] = self.make_embed()
 
+        for player in self.players:
+            await player.notify_cancel()
+
         for row in self.buttons:
             for button in row["components"]:
                 button["disabled"] = True
