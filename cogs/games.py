@@ -353,6 +353,7 @@ class TTTGame(TwoPlayerGame):
 
         self.empty_tile = emoji_to_dict(discord.utils.get(self.cog.bot.emojis, name="blank"))
         self._o_emoji = emoji_to_dict(discord.utils.get(self.cog.bot.emojis, name="ttt_circle"))
+        self._x_emoji = emoji_to_dict("✖️")
 
         self.buttons = []
         self.moves_binding = {}
@@ -365,7 +366,7 @@ class TTTGame(TwoPlayerGame):
             self.buttons.append(create_actionrow(*row))
 
     def player_place(self, player_index):
-        placement = [(self._o_emoji, ButtonStyle.green), ("✖️", ButtonStyle.red)]
+        placement = [(self._o_emoji, ButtonStyle.green), (self._x_emoji, ButtonStyle.red)]
         return placement[player_index]
 
     def get_button(self, i, j):
@@ -389,8 +390,8 @@ class TTTGame(TwoPlayerGame):
 
         await button_ctx.defer(edit_origin=True)
 
-        move_str, color = self.player_place(player_index)
-        button["emoji"] = emoji_to_dict(move_str)
+        move, color = self.player_place(player_index)
+        button["emoji"] = move
         button["style"] = color
 
         player.state = PlayerStates.made_move
@@ -406,7 +407,7 @@ class TTTGame(TwoPlayerGame):
         logger.debug(f"Player {player_index} ({button_ctx.author}) made a move: "
                      f"{('O', 'X')[player_index]} ({i}, {j}) ")
 
-        if self.check_winner(move_str, i, j):
+        if self.check_winner(move, i, j):
             self.state = GameStates.has_winner
             self.winner_index = player_index
         elif self.move_count == self.size ** 2:
@@ -419,22 +420,22 @@ class TTTGame(TwoPlayerGame):
         text = "Ney, it's a tie! Wanna try again?" if self.winner_index is None else "{} won against {}!"
         return self.winner_index, text
 
-    def check_winner(self, move_str, i, j):
-        horizontal = self.check_line(move_str, i, j, 0, 1)
-        vertical = self.check_line(move_str, i, j, 1, 0)
-        diagonal1 = self.check_line(move_str, i, j, 1, 1)
-        diagonal2 = self.check_line(move_str, i, j, 1, -1)
+    def check_winner(self, move, i, j):
+        horizontal = self.check_line(move, i, j, 0, 1)
+        vertical = self.check_line(move, i, j, 1, 0)
+        diagonal1 = self.check_line(move, i, j, 1, 1)
+        diagonal2 = self.check_line(move, i, j, 1, -1)
         return horizontal or vertical or diagonal1 or diagonal2
 
-    def check_line(self, move_str, i, j, dx=0, dy=0):
-        count = self.check_line_side(move_str, i, j, dx, dy) + \
-                self.check_line_side(move_str, i, j, dx * -1, dy * -1) - 1
+    def check_line(self, move, i, j, dx=0, dy=0):
+        count = self.check_line_side(move, i, j, dx, dy) + \
+                self.check_line_side(move, i, j, dx * -1, dy * -1) - 1
         return count >= self.winning_row
 
-    def check_line_side(self, move_str, i, j, dx=0, dy=0):
+    def check_line_side(self, move, i, j, dx=0, dy=0):
         count = 0
         while 0 <= i < self.size and 0 <= j < self.size:
-            if self.get_button(i, j)["emoji"]["name"] == move_str:
+            if self.get_button(i, j)["emoji"] == move:
                 count += 1
             else:
                 return count
