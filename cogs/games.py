@@ -218,13 +218,200 @@ class Game:
         raise NotImplementedError
 
 
+class SinglePlayerGame(Game):
+    def __init__(self, ctx, cog, player=None):
+        self.max_players = 1
+        super().__init__(ctx, cog)
+        if player:
+            self.players[0] = Player(player)
+
+    @property
+    def player(self) -> Player:
+        return self.players[0]
+
+    def make_embed(self):
+        embed = utils.bot_embed(self.cog.bot)
+        embed.title = self.game_title
+
+        if self.state is GameStates.has_winner:
+            winner_state, win_text = self.get_winner()
+            if winner_state:
+                name = f"🎉 {self.player.member.name} won! 🎉"
+            else:
+                name = f"{self.player.member.name} lost :("
+            embed.add_field(name=name,
+                            value=win_text.format(self.player.member.display_name),
+                            inline=False)
+            embed.set_footer(text=f"Use `/play {self.command_name}` for another game!",
+                             icon_url=self.cog.bot.user.avatar_url)
+        elif self.state is GameStates.game_timeout:
+            embed.set_footer(text="Game ended at", icon_url=self.cog.bot.user.avatar_url)
+            embed.timestamp = datetime.utcnow()
+        else:
+            embed.description = "Press button to play!"
+            embed.set_footer(text="Game ends at", icon_url=self.cog.bot.user.avatar_url)
+            embed.timestamp = self.started_at + timedelta(seconds=self.cog.global_timeout)
+
+        if self.player:
+            text = f"{self.player.member.mention} | {self.player.member}"
+        else:
+            text = "Nobody wanted to play :(" if self.state is GameStates.game_timeout \
+                else "Free spot!\nMake a move to join the game!"
+
+        title = "Player"
+        if self.state is GameStates.has_winner and winner_state:
+            title += "- winner!"
+
+        embed.add_field(name=title, value=text)
+
+        return embed
+
+    def get_winner(self):
+        raise NotImplementedError
+
+
+# class MineSweeperStates(enum.IntEnum):
+#     hidden = 0
+
+
+class MineSweeperGame(SinglePlayerGame):
+    command_name = "minesweeper"
+    game_title = "💥 Minesweeper! 💥"
+
+    def __init__(self, ctx, cog, mines=None, player=None):
+        super().__init__(ctx, cog, player)
+
+        self.size = 5
+        self.mines_count = 5 or min(mines, 10)
+
+        self.won = False
+
+        self.empty_tile = emoji_to_dict(discord.utils.get(self.cog.bot.emojis, name="blank"))
+        self.buttons = []
+        self.moves_binding = {}
+
+        for i in range(self.size):
+            row = []
+            for j in range(self.size):
+                button = create_button(style=ButtonStyle.gray, emoji=self.empty_tile)
+                row.append(button)
+                self.moves_binding[button["custom_id"]] = (i, j)
+            self.buttons.append(create_actionrow(*row))
+
+        self.field = [[0] * self.size for _ in range(self.size)]
+        self.field_visible = [[False] * self.size for _ in range(self.size)]
+
+        emojis = ["💣", self.empty_tile, "1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣"]
+        self.emojis = {i: emoji_to_dict(emoji) for i, emoji in enumerate(emojis, start=-1)}
+
+    def populate_field(self, origin_i, origin_j):
+        mines = 0
+        while mines < self.mines_count:
+            i, j = random.randrange(0, self.size), random.randrange(0, self.size)
+            if self.field[i][j] < 0:
+                continue
+            if (abs(origin_i - i) == 1) and (abs(origin_j - j) == 1):
+                # if (abs(origin_i-i) + abs(origin_j-j)) <= 1:
+                continue
+
+            mines += 1
+            self.field[i][j] = -1
+            for dx, dy in itertools.product([-1, 1, 0], repeat=2):  # all around
+                self.increment_field(i + dx, j + dy)
+
+    def increment_field(self, i, j):
+        if not (0 <= i < self.size and 0 <= j < self.size):
+            return
+
+        if self.field[i][j] >= 0:
+            self.field[i][j] += 1
+
+    def get_button(self, i, j):
+        return self.buttons[i]["components"][j]
+
+    def open_field(self, i, j):
+        if not (0 <= i < self.size and 0 <= j < self.size):
+            return
+
+        if self.field_visible[i][j]:
+            return
+
+        self.field_visible[i][j] = True
+        button = self.get_button(i, j)
+        value = self.field[i][j]
+        button["emoji"] = self.emojis[value]
+        button["style"] = ButtonStyle.blue
+
+        if value == 0:
+            for dx, dy in itertools.product([-1, 1, 0], repeat=2):
+                self.open_field(i + dx, j + dy)
+
+    def check_all_opened(self):
+        count = sum(sum(row) for row in self.field_visible)
+        return count + self.mines_count == self.size ** 2
+
+    def show_field(self):
+        for i in range(self.size):
+            for j in range(self.size):
+                if self.field_visible[i][j]:
+                    continue
+
+                value = self.field[i][j]
+                button = self.get_button(i, j)
+                button["emoji"] = self.emojis[value]
+                button["style"] = ButtonStyle.red if value == -1 else ButtonStyle.gray
+
+    async def player_move(self, button_ctx: ComponentContext):
+        if (player_index := await self.check_player_index(button_ctx)) is None:
+            return
+
+        i, j = self.moves_binding[button_ctx.custom_id]
+
+        if self.field_visible[i][j]:
+            await button_ctx.send("You already opened this square!", hidden=True)
+            return
+
+        await button_ctx.defer(edit_origin=True)
+
+        if self.player.check_new():
+            self.populate_field(i, j)
+
+        button = self.get_button(i, j)
+
+        if self.field[i][j] < 0:  # it's a mine
+            button["emoji"] = emoji_to_dict("💥")
+            button["style"] = ButtonStyle.red
+            self.field_visible[i][j] = True
+            self.state = GameStates.has_winner
+        else:
+            self.open_field(i, j)
+            if self.check_all_opened():
+                self.won = True
+                self.state = GameStates.has_winner
+
+        logger.debug(f"Player {self.player.member} ({button_ctx.author}) made a move:  ({i}, {j}) ")
+
+        if self.state is GameStates.has_winner:
+            self.show_field()
+
+        embed = self.make_embed()
+        await button_ctx.edit_origin(embed=embed, components=self.buttons)
+
+    def get_winner(self):
+        if self.won:
+            return True, "{} swept all mines like a pro"
+        else:
+            return False, "{} exploded on a mine. F."
+
+
 class TwoPlayerGame(Game):
     def __init__(self, ctx, cog, players=None):
         self.max_players = 2
         super().__init__(ctx, cog)
-        self.players = players or self.players
 
-        self.buttons = []
+        if players:
+            for i, member in enumerate(players):
+                self.players[i] = Player(member)
 
     def make_embed(self):
         embed = utils.bot_embed(self.cog.bot)
@@ -422,7 +609,7 @@ class TTTGame(TwoPlayerGame):
         await button_ctx.edit_origin(embed=embed, components=self.buttons)
 
     def get_winner(self):
-        text = "Ney, it's a tie! Wanna try again?" if self.winner_index is None else "{} won against {}!"
+        text = "Hey, it's a tie! Wanna try again?" if self.winner_index is None else "{} won against {}!"
         return self.winner_index, text
 
     def check_winner(self, move, i, j):
@@ -563,6 +750,33 @@ class Games(utils.AutoLogCog, utils.StartupCog):
         """Multiplayer game! Tic-tac-toe! Noughts and crosses! Xs and Os! Play with friends!"""
         players = await self.check_2_players(ctx, player1, player2)
         game = TTTGame(ctx, self, players, size, winning_row)
+        await game.play()
+
+    @cog_ext.cog_subcommand(base="play", name="minesweeper",
+                            options=[
+                                create_option(
+                                    name="mines",
+                                    description="Difficulty - number of mines on the field",
+                                    option_type=int,
+                                    required=False,
+                                    choices=[create_choice(name="easy (3)", value=3),
+                                             create_choice(name="medium (4)", value=4),
+                                             create_choice(name="hard (5)", value=5),
+                                             create_choice(name="expert (7)", value=6),
+                                             ]
+                                ),
+                                create_option(
+                                    name="player",
+                                    description="Is the game for you or of anyone to take",
+                                    option_type=bool,
+                                    required=False,
+                                ),
+                            ],
+                            guild_ids=guild_ids)
+    async def minesweeper(self, ctx, mines=3, for_me=True):
+        """Mini-minesweeper! Minisweeper?"""
+        member = ctx.author if for_me else None
+        game = MineSweeperGame(ctx, self, mines, member)
         await game.play()
 
 

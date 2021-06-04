@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import random
 from datetime import datetime
 
 import discord
@@ -26,6 +27,8 @@ class SkyComicBot(commands.Bot):
 
         current_dir = os.path.dirname(os.path.realpath(__file__))
         os.chdir(current_dir)
+
+        random.seed()
 
         self.version = version
         self.token = None
