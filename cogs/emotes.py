@@ -91,7 +91,8 @@ class Emotes(utils.AutoLogCog, utils.StartupCog):
             self.generate_thumbnail_image()
             self.has_thumbnail = True
         else:
-            os.remove(self.emotes_thumbnail)
+            if os.path.exists(self.emotes_thumbnail):
+                os.remove(self.emotes_thumbnail)
             self.has_thumbnail = False
 
         logger.debug(f"Loaded emotes: {self.emotes}")
