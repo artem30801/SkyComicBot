@@ -92,6 +92,7 @@ async def main():
     logging.getLogger("discord.gateway").setLevel(logging.ERROR)
     logging.getLogger("discord.http").setLevel(logging.ERROR)
     logging.getLogger("PIL").setLevel(logging.ERROR)
+    logging.getLogger("cogs.automod").setLevel(logging.INFO)
 
     initial_extensions = ["cogs.errors", "cogs.permissions", "cogs.service", "cogs.channels",
                           "cogs.greetings", "cogs.automod", "cogs.timezones",

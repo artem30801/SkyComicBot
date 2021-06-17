@@ -207,7 +207,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         raise NotImplementedError
 
     async def update_status(self, status_type):
-        logger.info(f"Updating {status_type} status messages")
+        logger.debug(f"Updating {status_type} status messages")
 
         updated_count = 0
         status_messages = self.status_messages[status_type]
@@ -227,7 +227,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             if await self.update_message_footer_reactions(message, status_type, embed):
                 updated_count += 1
 
-        logger.info(f"Updated {updated_count} {status_type} status messages")
+        logger.debug(f"Updated {updated_count} {status_type} status messages")
         self.status_error_backoff[status_type].reset()
 
     @tasks.loop(minutes=5)
