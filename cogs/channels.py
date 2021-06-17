@@ -157,14 +157,14 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
         guild_id = ctx.guild_id
         logger.db(f"'{ctx.author}' trying to set type '{channel_type_name}' to '{channel}' in '{ctx.guild}'")
 
-        if ChannelSetup.exists(guild_id=guild_id, channel_id=channel_id, channel_type=type_index):
+        if await ChannelSetup.exists(guild_id=guild_id, channel_id=channel_id, channel_type=type_index):
             await ctx.send(f"{channel.mention} already has type '{channel_type_name}'", hidden=True)
             return
 
-        await ChannelSetup(guild_id=guild_id, channel_id=channel_id, channel_type=type_index)
+        await ChannelSetup(guild_id=guild_id, channel_id=channel_id, channel_type=type_index).save()
         logger.db(f"Set type '{channel_type_name}' to '{channel}' in '{ctx.guild}'")
 
-        existing_channels = ChannelSetup.filter(guild_id=guild_id, channel_type=type_index)
+        existing_channels = await ChannelSetup.filter(guild_id=guild_id, channel_type=type_index)
         success_msg = f"Set type '{channel_type_name}' for {channel.mention}"
         if len(existing_channels) == 1:
             await ctx.send(f"{success_msg}. This is the only channel with this type", hidden=True)
@@ -203,7 +203,7 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
         type_string = "all types" if ChannelType.is_default_index(type_index) else f"type '{ChannelType(type_index)}'"
         logger.db(f"'{ctx.author}' trying to remove {type_string} from '{channel}' in '{ctx.guild}'")
 
-        channel_setups = ChannelSetup.filter(guild_id=ctx.guild_id, channel_id=channel.id)
+        channel_setups = await ChannelSetup.filter(guild_id=ctx.guild_id, channel_id=channel.id)
         if not channel_setups:
             await ctx.send(f"{channel.mention} don't have any type set", hidden=True)
             return
@@ -251,7 +251,7 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
         logger.info(f"'{ctx.author}' trying to list types of '*{channel}*' in '{ctx.guild}'")
 
         types = ChannelSetup.filter(guild_id=guild_id, channel_id=channel_id)
-        types = [f"'{ChannelType(channel_setup.channel_type).description}'" for channel_setup in types]
+        types = [f"'{ChannelType(channel_setup.channel_type).description}'" async for channel_setup in types]
         if types:
             await ctx.send(f"Channel {channel.mention} has {'types' if len(types) > 1 else 'type'} {', '.join(types)}",
                            hidden=True)
