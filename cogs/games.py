@@ -112,6 +112,9 @@ class Player:
         self._notify_task = None
         self._notify_message: discord.Message = None
 
+    def __bool__(self):
+        return bool(self.member)
+
     def check_new(self):
         if self.new:
             self.new = False
@@ -161,9 +164,16 @@ class Game:
             if len(self._player_mapping) == self.max_players:
                 raise NoFreePlayerSlots
 
-            player_index = next(self._next_index)
-            self.players[player_index] = Player(member)  # new player joined
-            self._player_mapping[member.id] = player_index
+            try:
+                player_index = next(index for index, player in enumerate(self.players) if player.member == member)
+                self._player_mapping[member.id] = player_index
+                return player_index
+            except StopIteration:
+                player_index = next(self._next_index)
+                while self.players[player_index]:
+                    player_index = next(self._next_index)
+                self.players[player_index] = Player(member)  # new player joined
+                self._player_mapping[member.id] = player_index
 
         return player_index
 
