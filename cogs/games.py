@@ -778,7 +778,7 @@ class Games(utils.AutoLogCog, utils.StartupCog):
                                     choices=[create_choice(name="easy (3)", value=3),
                                              create_choice(name="medium (4)", value=4),
                                              create_choice(name="hard (5)", value=5),
-                                             create_choice(name="expert (7)", value=6),
+                                             create_choice(name="expert (6)", value=6),
                                              ]
                                 ),
                                 create_option(
