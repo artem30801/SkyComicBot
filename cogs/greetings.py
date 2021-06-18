@@ -189,6 +189,9 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
         if member and not isinstance(member, discord.Member):
             raise commands.BadArgument(f"Failed to get member '{member}' info!")
 
+        if not utils.can_bot_respond(ctx.channel):
+            raise commands.BadArgument(f"I can't send messages to this channel")  # This will be shown as hidden response, so we can do that
+
         member = member or ctx.author
         await ctx.send(self.get_greeting(member))
 
