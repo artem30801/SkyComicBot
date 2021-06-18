@@ -24,6 +24,7 @@ class Reactions(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
+        self.max_message_length_for_reaction = 500
         self.x_emojis = None
         reactions = {("telling",): self.telling,
                      ("wrong layer",): self.wrong_layer,
@@ -68,6 +69,9 @@ class Reactions(commands.Cog):
     @commands.Cog.listener()
     async def on_message(self, message: Message):
         if message.author.bot:
+            return
+
+        if len(message.content) > self.max_message_length_for_reaction:
             return
 
         if message.guild and message.channel:
