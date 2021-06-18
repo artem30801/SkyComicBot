@@ -165,7 +165,7 @@ class Game:
                 raise NoFreePlayerSlots
 
             try:
-                player_index = next(index for index, player in enumerate(self.players) if player.member == member)
+                player_index = next(index for index, player in enumerate(self.players) if player and player.member == member)
                 self._player_mapping[member.id] = player_index
                 return player_index
             except StopIteration:
