@@ -1,4 +1,5 @@
 import asyncio
+import nest_asyncio_apply  # We want to apply nested asyncio as early as we can, so we do it in this import
 import json
 import logging
 import os
@@ -6,7 +7,6 @@ import random
 from datetime import datetime
 
 import discord
-import nest_asyncio
 from discord.ext import commands
 from discord_slash import SlashCommand
 from tortoise import Tortoise
@@ -15,7 +15,7 @@ import cogs.cog_utils as utils
 from cogs.logging_utils import BufferingSocketHandler
 
 
-version = "3.7.1"  # bump this with update releases
+version = "3.7.2"  # bump this with update releases
 
 
 # https://discordapp.com/oauth2/authorize?&client_id=804306819660644372&scope=applications.commands%20bot&permissions=1446509632
@@ -114,5 +114,4 @@ async def main():
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
-    nest_asyncio.apply(loop)
     loop.run_until_complete(main())
