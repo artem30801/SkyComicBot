@@ -71,15 +71,15 @@ class Reactions(commands.Cog):
         if message.author.bot:
             return
 
-        if len(message.content) > self.max_message_length_for_reaction:
-            return
-
         if message.guild and message.channel:
+            if self.bot.get_cog("Channels").is_update_monitor_channel(message.channel):
+                await self.notify_update(message)
+
             if self.bot.get_cog("Channels").is_no_reactions_channel(message.channel):
                 return
 
-            if self.bot.get_cog("Channels").is_update_monitor_channel(message.channel):
-                await self.notify_update(message)
+        if len(message.content) > self.max_message_length_for_reaction:
+            return
 
         to_react = []
         for re_expression, react_func in self._keyword_reactions:
