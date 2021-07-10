@@ -43,9 +43,25 @@ def has_server_perms():
     return commands.check_any(is_guild_owner(), commands.is_owner(), commands.has_role(utils.bot_manager_role))
 
 
+async def has_server_perms_from_ctx(ctx):
+    try:
+        await has_server_perms().predicate(ctx)
+        return True
+    except commands.CheckFailure:
+        return False
+
+
 def has_bot_perms():
     """Perms to manage bot internal DB"""
     return commands.check_any(commands.is_owner(), is_whitelisted())
+
+
+async def has_bot_perms_from_ctx(ctx):
+    try:
+        await has_bot_perms().predicate(ctx)
+        return True
+    except commands.CheckFailure:
+        return False
 
 
 class Permissions(utils.AutoLogCog):

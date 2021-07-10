@@ -25,7 +25,7 @@ from tortoise.models import Model
 import cogs.cog_utils as utils
 import cogs.db_utils as db_utils
 from cogs.cog_utils import guild_ids, display_delta
-from cogs.permissions import has_server_perms
+from cogs.permissions import has_server_perms, has_server_perms_from_ctx
 
 
 class StatusType(Enum):
@@ -278,10 +278,9 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
 
         logger.info(f"{reaction.member} trying to stop {status_type} status updates"
                     f"in {channel} in {guild}. Message ID: {message.id}")
-        try:
-            ctx = FakeCheckContext(guild=guild, channel=channel, author=reaction.member, bot=self.bot)
-            await has_server_perms().predicate(ctx)
-        except commands.CheckFailure:
+
+        ctx = FakeCheckContext(guild=guild, channel=channel, author=reaction.member, bot=self.bot)
+        if not await has_server_perms_from_ctx(ctx):
             logger.info(f"Prevented {reaction.member} from stopping status updates. No server permissions")
             if utils.can_bot_manage_messages(channel):
                 await message.remove_reaction(reaction.emoji, reaction.member)

@@ -13,7 +13,7 @@ from tortoise.transactions import atomic
 import cogs.cog_utils as utils
 import cogs.db_utils as db_utils
 from cogs.cog_utils import guild_ids
-from cogs.permissions import has_server_perms, has_bot_perms
+from cogs.permissions import has_server_perms, has_server_perms_from_ctx, has_bot_perms
 
 logger = logging.getLogger(__name__)
 
@@ -251,16 +251,20 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         """Shows list of all roles available to you. Roles are grouped by role group"""
         await ctx.defer()
 
+        caller_has_server_perms = await has_server_perms_from_ctx(ctx)
         embed = utils.bot_embed(self.bot)
         embed.title = "Available roles:"
         db_groups = await RoleGroup.all()
+
         for group in db_groups:
             if await self.get_group_state(group) != RoleGroupStates.normal:
                 continue
             query = Role.filter(group=group, archived=False)
-            if not await has_server_perms().predicate(ctx):
+            if not caller_has_server_perms:
                 query = query.filter(assignable=True)
             db_roles = await query.values_list("name", flat=True)
+            if not db_roles:
+                continue
             role_mentions = [self.get_role_repr(ctx, role) for role in db_roles]
             embed.add_field(name=group.name, value="\n".join(role_mentions), inline=True)
 
@@ -496,7 +500,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
                                        f"You probably shouldn't use that role")
 
         if (member != ctx.author or db_role.name == utils.bot_manager_role or not db_role.assignable) \
-                and not await has_server_perms().predicate(ctx):
+                and not await has_server_perms_from_ctx(ctx):
             # MissingPermissions expects an array of permissions
             logger.info(f"{self.format_caller(ctx)} don't have permissions to assign '{role}' to {member}")
             raise commands.MissingPermissions([utils.bot_manager_role])
@@ -560,7 +564,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
             raise commands.BadArgument(f"Role {role.mention} is not in bots database!"
                                        f"You probably shouldn't touch that role")
 
-        if (member != ctx.author or not db_role.assignable) and not await has_server_perms().predicate(ctx):
+        if (member != ctx.author or not db_role.assignable) and not await has_server_perms_from_ctx(ctx):
             logger.info(f"{self.format_caller(ctx)} don't have permissions to remove '{role}' from {member}")
             # MissingPermissions expects an array of permissions
             raise commands.MissingPermissions([utils.bot_manager_role])
