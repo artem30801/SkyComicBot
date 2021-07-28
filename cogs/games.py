@@ -5,8 +5,7 @@ import discord
 from discord.ext import commands
 from discord_slash import cog_ext, SlashContext, ComponentContext
 from discord_slash.utils.manage_commands import create_option, create_choice
-from discord_slash.utils.manage_components import create_actionrow, create_button, emoji_to_dict, ButtonStyle, \
-    wait_for_any_component
+from discord_slash.utils.manage_components import create_actionrow, create_button, emoji_to_dict, ButtonStyle, wait_for_component
 
 import random
 import enum
@@ -218,7 +217,7 @@ class Game:
 
     async def wait_moves(self, message):
         while self.state is GameStates.waiting_move:
-            button_ctx = await wait_for_any_component(self.cog.bot, message)
+            button_ctx = await wait_for_component(self.cog.bot, messages=[message])
             await self.player_move(button_ctx)
 
     async def player_move(self, button_ctx: ComponentContext):
