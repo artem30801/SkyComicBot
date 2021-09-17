@@ -28,6 +28,7 @@ class Reactions(commands.Cog):
         self.x_emojis = None
         reactions = {("telling",): self.telling,
                      ("wrong layer",): self.wrong_layer,
+                     ("timezones",): self.timezones,
                      ("hug", "hugs",): self.hug,
                      ("baby alphys",): self.baby_alphys,
                      ("suselle",): self.suselle,
@@ -116,6 +117,9 @@ class Reactions(commands.Cog):
 
     async def wrong_layer(self, message):
         await send_file(message.channel, abs_join("reactions", "wrong_layer.gif"), "wronglayersong.gif")
+
+    async def timezones(self, message):
+        await send_file(message.channel, abs_join("reactions", "timezones.gif"), "timezones.gif")
 
     def reset_x_emojis(self):
         emojis = ["🇽", "❌", "❎", ]
