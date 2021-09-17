@@ -53,8 +53,8 @@ image_exts = (".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff")
 
 
 class EmoteConverter(commands.Converter):
-    async def convert(self, ctx, argument):
-        key = fuzzy_search(argument, ctx.cog.emotes.keys(), score_cutoff=30)
+    async def convert(self, emotes, argument):
+        key = fuzzy_search(argument, emotes.keys(), score_cutoff=30)
         if key is None:
             raise commands.BadArgument(f"Sorry, I cant find emote **{argument}**. "
                                        f"Try */emote list* command to see available emotes")
@@ -176,8 +176,7 @@ class Emotes(utils.AutoLogCog, utils.StartupCog):
         """Sends an emote image. Type incomplete name to send"""
         # Without channel (in threads) we send emote as a response so shouldn't hide defer
         await ctx.defer(hidden=bool(ctx.channel))
-        ctx.cog = self
-        emote = await EmoteConverter().convert(ctx, name)
+        emote = await EmoteConverter().convert(self.emotes, name)
         await self._send_emote(ctx, emote)
 
     @cog_ext.cog_subcommand(base="emote", name="pick",
@@ -304,8 +303,7 @@ class Emotes(utils.AutoLogCog, utils.StartupCog):
         await ctx.defer(hidden=False)
         logger.important(f"{self.format_caller(ctx)} trying to remove emote '{name}'")
 
-        ctx.cog = self
-        emote = await EmoteConverter().convert(ctx, name)
+        emote = await EmoteConverter().convert(self.emotes, name)
         os.remove(self.emotes[emote])
         logger.important(f"Removed emote '{emote}' file '{self.emotes[emote]}'")
 
