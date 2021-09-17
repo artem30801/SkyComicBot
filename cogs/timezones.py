@@ -357,6 +357,7 @@ class Conversions(utils.AutoLogCog):
             name = timezone.split('+')[0]
             name = name.split('-')[0]
             name = name.split('−')[0]
+            name = name.strip()
             if len(name) > 6:  # too long for timezone abbreviation
                 return None, None, TimezoneInputType.InvalidData
             if re.search(r'\W', name):  # not a word character shouldn't be in the timezone
