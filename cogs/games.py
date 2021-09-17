@@ -133,6 +133,9 @@ class Player:
             self._notify_message = None
 
     async def notify(self, message, delay, delete_after):
+        # Ignore anything that is not explicitly text channel (thread, for example)
+        if not message.channel or not isinstance(message.channel, discord.TextChannel):
+            return
         await asyncio.sleep(delay)
         self._notify_message = await message.channel.send(content=f"{self.member.mention}, it's your move!",
                                                           delete_after=delete_after)

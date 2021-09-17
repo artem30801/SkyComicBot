@@ -145,6 +145,7 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
                             connector={"type": "type_index"},
                             guild_ids=utils.guild_ids)
     @has_bot_perms()
+    @utils.block_in_threads
     async def set_type(self, ctx: SlashContext, type_index: int, channel: discord.TextChannel = None):
         """Sets type for the selected channel (or current one by default)"""
         await ctx.defer(hidden=True)
@@ -193,6 +194,7 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
                             connector={"type": "type_index"},
                             guild_ids=utils.guild_ids)
     @has_bot_perms()
+    @utils.block_in_threads
     async def clear_type(self, ctx: SlashContext, type_index: int, channel: discord.TextChannel = None):
         """Removes type from the selected channel (or this one by default)"""
         if channel and not isinstance(channel, discord.TextChannel):
@@ -239,6 +241,7 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
                             ],
                             guild_ids=utils.guild_ids)
     @has_server_perms()
+    @utils.block_in_threads
     async def list_types(self, ctx: SlashContext, channel: discord.TextChannel = None):
         """Lists all types of the selected channel (or this one by default)"""
         if channel and not isinstance(channel, discord.TextChannel):

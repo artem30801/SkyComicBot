@@ -2,6 +2,8 @@ import logging
 import os
 
 import asyncio
+from functools import wraps
+
 import discord
 import tortoise.exceptions
 from discord import Guild, TextChannel, Member, Role
@@ -159,6 +161,21 @@ class OrmBackoffStrategy(BackoffStrategyBase):
         raise last_exception
 
 
+class ThreadUnsupported(commands.CheckFailure):
+    def __init__(self, message, *args):
+        super().__init__(message=message, *args)
+
+
+def block_in_threads(command):
+    @wraps(command)
+    async def ensure(cog_object, ctx, *args, **kwargs):
+        if ctx.channel_id and not ctx.channel:
+            raise ThreadUnsupported(ctx.message)
+        return await command(cog_object, ctx, *args, **kwargs)
+
+    return ensure
+
+
 async def run(cmd):
     proc = await asyncio.create_subprocess_shell(
         cmd,
@@ -205,6 +222,9 @@ def url_hostname(url):
 
 def can_bot_respond(channel: TextChannel) -> bool:
     """Checks, can a bot send messages to this channel"""
+    # TODO: until we have proper threads support, we allow bot to respond in threads
+    if not channel:
+        return True
     bot = channel.guild.me
     permissions = channel.permissions_for(bot)
     return permissions.send_messages

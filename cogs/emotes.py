@@ -174,7 +174,8 @@ class Emotes(utils.AutoLogCog, utils.StartupCog):
                             guild_ids=guild_ids)
     async def emote_send(self, ctx: SlashContext, name: str):
         """Sends an emote image. Type incomplete name to send"""
-        await ctx.defer(hidden=True)
+        # Without channel (in threads) we send emote as a response so shouldn't hide defer
+        await ctx.defer(hidden=bool(ctx.channel))
         ctx.cog = self
         emote = await EmoteConverter().convert(ctx, name)
         await self._send_emote(ctx, emote)
@@ -191,12 +192,16 @@ class Emotes(utils.AutoLogCog, utils.StartupCog):
                             guild_ids=guild_ids)
     async def emote_pick(self, ctx: SlashContext, emote: str):
         """Sends an emote image. Pick emote name from picker to send (only first 25 will be shown)"""
-        await ctx.defer(hidden=True)
+        # Without channel (in threads) we send emote as a response so shouldn't hide defer
+        await ctx.defer(hidden=bool(ctx.channel))
         await self._send_emote(ctx, emote)
 
     async def _send_emote(self, ctx, emote):
-        await send_file(ctx.channel, self.emotes[emote])
-        await ctx.send(f"Sent '{emote}' emote!", hidden=True)
+        if ctx.channel:
+            await send_file(ctx.channel, self.emotes[emote])
+            await ctx.send(f"Sent '{emote}' emote!", hidden=True)
+        else:
+            await send_file(ctx, self.emotes[emote])
 
     @cog_ext.cog_subcommand(base="emote", name="list", guild_ids=guild_ids)
     async def emote_list(self, ctx):

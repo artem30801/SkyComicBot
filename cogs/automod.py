@@ -642,6 +642,10 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
     @has_server_perms()
     async def check_server(self, ctx: SlashContext, check="all", auto_update=False):
         """Runs selected checks on all members of the server, shows server statistics"""
+        if auto_update and not ctx.channel:
+            await ctx.send("Messages with auto-update are not supported outside of normal channels", hidden=True)
+            return
+
         await ctx.defer(hidden=False)
         checks = self.checks if auto_update else self.get_to_check(check)
         embed = await self.make_guild_status_embed(ctx.guild, checks)
@@ -668,6 +672,10 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                             guild_ids=guild_ids)
     async def check_bot(self, ctx: SlashContext, auto_update=False):
         """Shows bot information, statistics and status"""
+        if auto_update and not ctx.channel:
+            await ctx.send("Messages with auto-update are not supported outside of normal channels", hidden=True)
+            return
+
         if auto_update:
             # Only server admins can create updatable messages
             await has_server_perms().predicate(ctx)

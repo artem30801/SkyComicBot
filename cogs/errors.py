@@ -28,17 +28,20 @@ class Errors(commands.Cog):
             message = f"Sorry, but your arguments are invalid: {' ,'.join(error.args)}"
         elif isinstance(error, commands.MissingRequiredArgument):
             message = f"Sorry, but you missed required argument! {' ,'.join(error.args)}"
-        elif isinstance(error, commands.CheckFailure):
-            message = '\n'.join(error.args)
         elif isinstance(error, commands.NoPrivateMessage):
             message = "You can use that only in guild!"
+        elif isinstance(error, utils.ThreadUnsupported):
+            message = "Sorry, this command is unavailable in threads"
+        elif isinstance(error, commands.CheckFailure):
+            # NoPrivateMessage and NoThread are CheckFailures, so should be handled before the general case
+            message = '\n'.join(error.args)
         elif isinstance(error, t_exceptions.OperationalError):
-            await ctx.channel.send("Database connection error, please retry!")
+            await ctx.send("Database connection error, please retry!")
             return
         else:
             logger.error(f"Unexpected error {repr(error)} occurred:", exc_info=error)
             if self.should_ping_on_error:
-                await ctx.channel.send(await self.get_emergency_message(ctx))
+                await ctx.send(await self.get_emergency_message(ctx))
             # await send_file(ctx.channel, abs_join("misc", "code.jpg"), "code.jpg")
             return
 
