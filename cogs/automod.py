@@ -711,6 +711,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                                 "link": "msg_link",
                             },
                             guild_ids=guild_ids)
+    @has_server_perms()
     async def stop_status(self, ctx: SlashContext, db_id: int = None, msg_link: str = None):
         """Stops update for the status message by DB id or message link"""
         await ctx.defer(hidden=True)
@@ -753,6 +754,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         await ctx.send("Removed message from auto-updates", hidden=True)
 
     @cog_ext.cog_subcommand(base="auto-updates", name="refresh", guild_ids=guild_ids)
+    @has_server_perms()
     async def refresh_status(self, ctx: SlashContext):
         """Forcefully refreshes all status messages with auto-update"""
         await ctx.defer(hidden=True)
@@ -763,6 +765,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         await ctx.send("Refreshed!", hidden=True)
 
     @cog_ext.cog_subcommand(base="auto-updates", name="list", guild_ids=guild_ids)
+    @has_server_perms()
     async def list_status(self, ctx: SlashContext):
         """Lists all messages with auto-update in database"""
         await ctx.defer(hidden=True)
