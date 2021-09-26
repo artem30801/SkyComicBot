@@ -15,7 +15,7 @@ import cogs.cog_utils as utils
 from cogs.logging_utils import BufferingSocketHandler
 
 
-version = "3.7.2"  # bump this with update releases
+version = "3.7.3"  # bump this with update releases
 
 
 # https://discordapp.com/oauth2/authorize?&client_id=804306819660644372&scope=applications.commands%20bot&permissions=1446509632
@@ -100,7 +100,7 @@ async def main():
 
     bot.load_initial_extensions(initial_extensions)
 
-    models = ["cogs.permissions", "cogs.roles", "cogs.timezones", "cogs.channels", "cogs.automod", ]  # "cogs.comics",
+    models = ["cogs.permissions", "cogs.roles", "cogs.timezones", "cogs.channels", "cogs.automod", "cogs.greetings", ]  # "cogs.comics",
     current_models = [model for model in bot.extensions if model in models]
     try:
         await Tortoise.init(db_url=bot.config["auth"]["db_url"],

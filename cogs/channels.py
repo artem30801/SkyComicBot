@@ -21,7 +21,8 @@ class ChannelType(Enum):
     UPDATE_MONITOR = 2, "Monitor update channel"
     UPDATE_NOTIFY = 3, "Update notify channel"
     MOD_LOG = 4, "Auto-moderation log channel"
-    NO_REACTIONS = 5, "No reactions channel"
+    NO_REACTIONS = 5, "No reactions channel",
+    WELCOME = 6, "Greetings channel"
 
     def __new__(cls, *args, **kwargs):
         obj = object.__new__(cls)
@@ -109,6 +110,9 @@ class Channels(utils.AutoLogCog, utils.StartupCog):
 
     async def get_home_channels(self, guild: discord.Guild = None) -> [discord.TextChannel]:
         return await self.get_channels(guild, ChannelType.HOME.value)
+
+    async def get_welcome_channels(self, guild: discord.Guild = None) -> [discord.TextChannel]:
+        return await self.get_channels(guild, ChannelType.WELCOME.value)
 
     async def get_mod_log_channels(self, guild: discord.Guild = None) -> [discord.TextChannel]:
         return await self.get_channels(guild, ChannelType.MOD_LOG.value)

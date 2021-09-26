@@ -13,10 +13,12 @@ import discord
 from discord.ext import tasks, commands
 from discord_slash import cog_ext, SlashContext
 from discord_slash.utils.manage_commands import create_option, create_choice
+from tortoise import fields
+from tortoise.models import Model
 
 import cogs.cog_utils as utils
 from cogs.cog_utils import guild_ids
-from cogs.permissions import has_bot_perms
+from cogs.permissions import has_bot_perms, has_server_perms
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +28,11 @@ activities = {
     "Betrayal.io": "773336526917861400",
     "Fishington.io": "814288819477020702"
 }
+
+
+class GuildGreetings(Model):
+    guild_id = fields.BigIntField(unique=True)
+    greeting_text = fields.TextField(default="")
 
 
 class Greetings(utils.AutoLogCog, utils.StartupCog):
@@ -62,12 +69,22 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
         self._last_active_at = datetime.utcnow()
         self.update_file_activity_time()
 
-    # @commands.Cog.listener()
-    # async def on_member_join(self, member):
-    #     channel = await self.get_home_channel(member.guild)
-    #     if utils.can_bot_respond(self.bot, channel):
-    #         await channel.send(f"{self.get_greeting(member)}\nWelcome!")
-    #         logger.info(f"Greeted new guild member {member}")
+    @commands.Cog.listener()
+    async def on_member_join(self, member: discord.Member):
+        if member.bot:
+            return
+        channels = await self.bot.get_cog("Channels").get_welcome_channels(member.guild)
+        if not channels:
+            return
+
+        message = await self.get_welcome_message(member)
+        if not message:
+            logger.info("Member greeting is disabled")
+            return
+        for greeting_channel in channels:
+            if utils.can_bot_respond(greeting_channel):
+                await greeting_channel.send(message)
+        logger.info(f"Greeted new guild member {member}")
 
     def get_file_activity_time(self) -> Optional[datetime]:
         try:
@@ -174,6 +191,95 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
 
         self._last_greeted_member = member
         return message
+
+    @staticmethod
+    def get_member_welcome_message(member: discord.Member) -> str:
+        """Returns personal part of the welcome message"""
+        greetings = \
+            ["Welcome, {}!",
+             "Glad to see you here, {}!",
+             "Welcome here, {}!",
+             "{} just joined, welcome!",
+             "Welcome, {}. We're not Discord, we demand pizza!",
+             "Hello, {}. Have a good time here!",
+             ]
+        return random.choice(greetings).format(member.display_name)
+
+    @staticmethod
+    async def get_welcome_message(member: discord.Member) -> Optional[str]:
+        """Returns full welcome message for specific server and person"""
+        guild_greeting = await GuildGreetings.get_or_none(guild_id=member.guild.id)
+        if not guild_greeting:
+            return None
+        member_greeting = Greetings.get_member_welcome_message(member)
+        return "\n".join([member_greeting, guild_greeting.greeting_text]) if guild_greeting.greeting_text else member_greeting
+
+    @staticmethod
+    async def set_guild_greeting_text(guild: discord.Guild, greeting_text: Optional[str]):
+        (greeting, _) = await GuildGreetings.get_or_create(guild_id=guild.id)
+        greeting.greeting_text = greeting_text
+        await greeting.save()
+
+    @staticmethod
+    async def delete_welcome_message(guild: discord.Guild):
+        greeting = await GuildGreetings.get_or_none(guild_id=guild.id)
+        if greeting:
+            await greeting.delete()
+
+    @cog_ext.cog_subcommand(base="greeting", name="set",
+                            description="Enables welcome message and sets server specific part of the this message",
+                            options=[
+                                create_option(
+                                    name="message",
+                                    description="Server specific part of the welcome message",
+                                    option_type=str,
+                                    required=False,
+                                ),
+                            ],
+                            guild_ids=guild_ids)
+    @has_server_perms()
+    async def set_greeting(self, ctx: SlashContext, message: str = ""):
+        await ctx.defer(hidden=True)
+        await self.set_guild_greeting_text(ctx.guild, message)
+        message = f"'{message}'" if message else message
+        logger.db(f"{ctx.author} set greeting for guild {ctx.guild} to {message}")
+        await ctx.send(f"Successfully set message to personal greeting {'and ' + message if message else 'only'}", hidden=True)
+
+    @cog_ext.cog_subcommand(base="greeting", name="delete",
+                            description="Disables welcome message for new people",
+                            guild_ids=guild_ids)
+    @has_server_perms()
+    async def delete_greeting(self, ctx: SlashContext):
+        await ctx.defer(hidden=True)
+        await self.delete_welcome_message(ctx.guild)
+        logger.db(f"{ctx.author} deleted greeting for guild {ctx.guild}'")
+        await ctx.send(f"Successfully deleted welcome message! Bot won't send welcome message when new people joins", hidden=True)
+
+    @cog_ext.cog_subcommand(base="greeting", name="greet",
+                            description="Sends greeting for you or specific person",
+                            options=[
+                                create_option(
+                                    name="member",
+                                    description="Person to greet",
+                                    option_type=discord.Member,
+                                    required=False,
+                                ),
+                                create_option(
+                                    name="hidden",
+                                    description="If enabled, it'll be only you who see the greeting",
+                                    option_type=bool,
+                                    required=False,
+                                ),
+                            ],
+                            guild_ids=guild_ids)
+    async def greet(self, ctx: SlashContext, member: discord.Member = None, hidden: bool = False):
+        member = member or ctx.author
+        message = await self.get_welcome_message(member)
+        if not message:
+            await ctx.send("Welcome message is disabled for the server", hidden=True)
+            return
+
+        await ctx.send(message, hidden=hidden)
 
     @cog_ext.cog_slash(options=[
         create_option(
