@@ -83,7 +83,7 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
             return
         for greeting_channel in channels:
             if utils.can_bot_respond(greeting_channel):
-                await greeting_channel.send(message)
+                await greeting_channel.send(message, allowed_mentions=discord.AllowedMentions.none())
         logger.info(f"Greeted new guild member {member}")
 
     def get_file_activity_time(self) -> Optional[datetime]:
@@ -203,7 +203,7 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
              "Welcome, {}. We're not Discord, we demand pizza!",
              "Hello, {}. Have a good time here!",
              ]
-        return random.choice(greetings).format(member.display_name)
+        return random.choice(greetings).format(member.mention)
 
     @staticmethod
     async def get_welcome_message(member: discord.Member) -> Optional[str]:
@@ -279,7 +279,7 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
             await ctx.send("Welcome message is disabled for the server", hidden=True)
             return
 
-        await ctx.send(message, hidden=hidden)
+        await ctx.send(message, hidden=hidden, allowed_mentions=discord.AllowedMentions.none())
 
     @cog_ext.cog_slash(options=[
         create_option(
