@@ -290,6 +290,22 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
 
         await ctx.send(message, hidden=hidden, allowed_mentions=discord.AllowedMentions.none())
 
+    @cog_ext.cog_subcommand(base="greeting", name="list",
+                            description="Lists all greetings in database",
+                            guild_ids=guild_ids)
+    @has_bot_perms()
+    async def list_greetings(self, ctx: SlashContext):
+        await ctx.defer(hidden=True)
+        async for greeting in GuildGreetings.all():
+            guild = self.bot.get_guild(greeting.guild_id)
+            message = "\n".join(
+                [
+                    f"'{guild.name if guild else 'ID ' + str(greeting.guild_id)}' greeting:",
+                    greeting.greeting_text if greeting.greeting_text else "Personal greeting only",
+                ]
+            )
+            await ctx.send(content=message, hidden=True)
+
     @cog_ext.cog_slash(options=[
         create_option(
             name="member",
