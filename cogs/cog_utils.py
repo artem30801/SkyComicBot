@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 
 import asyncio
 from functools import wraps
@@ -184,6 +185,33 @@ async def run(cmd):
 
     stdout, stderr = await proc.communicate()
     return stdout.decode('ascii', errors="backslashreplace"), stderr.decode("ascii", errors="backslashreplace")
+
+
+async def get_message_from_link(bot: commands.Bot, link: str) -> discord.Message:
+    if not get_message_from_link.message_regex:
+        # basically a static variable, so we don't compile this regex every call
+        get_message_from_link.message_regex = re.compile(
+            pattern=r"(\A|\W)https://discord.com/channels/(?P<guild_id>\d+)/(?P<channel_id>\d+)/(?P<msg_id>\d+)(\Z|\W)"
+        )
+    match = get_message_from_link.message_regex.match(string=link)
+    if not match:
+        raise commands.BadArgument(f"Looks like '{link}' is not a link to discord message")
+    ids = match.groupdict()
+
+    guild = bot.get_guild(int(ids['guild_id']))
+    if not guild:
+        raise commands.BadArgument(f"Bot don't have access to the guild with ID {ids['guild_id']}")
+    channel = guild.get_channel(int(ids['channel_id']))
+    if not channel:
+        raise commands.BadArgument(f"Bot don't have access to the channel with ID {ids['channel_id']} on server {guild}")
+    try:
+        message = await channel.fetch_message(int(ids['msg_id']))
+    except discord.NotFound:
+        raise commands.BadArgument(f"Bot can't get the message with with ID {ids['msg_id']} in {channel.mention}")
+    if not message:
+        raise commands.BadArgument(f"Bot can't get the message with with ID {ids['msg_id']} in {channel.mention}")
+    return message
+get_message_from_link.message_regex = None
 
 
 def format_params(params):

@@ -725,19 +725,13 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             if db_message is None:
                 raise commands.BadArgument(f"There is no status message with id {db_id}")
 
+        message = None
         if not db_message and msg_link:
-            # TODO: precompile match on start
-            match = re.match(
-                pattern=r"(\A|\W)https://discord.com/channels/(?P<guild_id>\d+)/(?P<channel_id>\d+)/(?P<msg_id>\d+)(\Z|\W)",
-                string=msg_link
-            )
-            if not match:
-                raise commands.BadArgument(f"Looks like '{msg_link}' is not a link to discord message")
-            ids = match.groupdict()
+            message = await utils.get_message_from_link(self.bot, msg_link)
             db_message = await utils.OrmBackoffStrategy().run_task(StatusMessage.get_or_none,
-                                                                   guild_id=ids['guild_id'],
-                                                                   channel_id=ids['channel_id'],
-                                                                   message_id=ids['msg_id'])
+                                                                   guild_id=message.guild.id,
+                                                                   channel_id=message.channel.id,
+                                                                   message_id=message.id)
             if db_message is None:
                 raise commands.BadArgument("Looks like linked message is not a status message with auto-updates")
 
@@ -745,9 +739,10 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         status_type = StatusType(db_message.status_type)
         await self.update_status_tasks(status_type)
 
-        guild = self.bot.get_guild(db_message.guild_id)
-        channel = guild.get_channel(db_message.channel_id)
-        message = await channel.fetch_message(db_message.message_id)
+        if not message:
+            guild = self.bot.get_guild(db_message.guild_id)
+            channel = guild.get_channel(db_message.channel_id)
+            message = await channel.fetch_message(db_message.message_id)
 
         await self.update_message_footer_reactions(message, status_type)
 

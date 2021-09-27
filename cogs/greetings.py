@@ -235,11 +235,20 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
                                     option_type=str,
                                     required=False,
                                 ),
+                                create_option(
+                                    name="template_link",
+                                    description="Link to the message, which text should be used as a welcome message",
+                                    option_type=str,
+                                    required=False,
+                                ),
                             ],
                             guild_ids=guild_ids)
     @has_server_perms()
-    async def set_greeting(self, ctx: SlashContext, message: str = ""):
+    async def set_greeting(self, ctx: SlashContext, message: str = "", template_link: Optional[str] = None):
         await ctx.defer(hidden=True)
+        if not message and template_link:
+            message = await utils.get_message_from_link(self.bot, template_link)
+            message = message.content
         await self.set_guild_greeting_text(ctx.guild, message)
         message = f"'{message}'" if message else message
         logger.db(f"{ctx.author} set greeting for guild {ctx.guild} to {message}")
