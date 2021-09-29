@@ -203,7 +203,9 @@ class Greetings(utils.AutoLogCog, utils.StartupCog):
              "Welcome, {}. We're not Discord, we demand pizza!",
              "Hello, {}. Have a good time here!",
              ]
-        return random.choice(greetings).format(member.mention)
+        # Discord mobile client have a bug where it shows mention as @invalid-user
+        # What exactly triggers that is beyond my understanding right now, so I just put back the display name for now
+        return random.choice(greetings).format(member.display_name)
 
     @staticmethod
     async def get_welcome_message(member: discord.Member) -> Optional[str]:

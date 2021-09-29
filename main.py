@@ -15,7 +15,7 @@ import cogs.cog_utils as utils
 from cogs.logging_utils import BufferingSocketHandler
 
 
-version = "3.8.1"  # bump this with update releases
+version = "3.8.2"  # bump this with update releases
 
 
 # https://discordapp.com/oauth2/authorize?&client_id=804306819660644372&scope=applications.commands%20bot&permissions=1446509632
