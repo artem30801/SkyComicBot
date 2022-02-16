@@ -154,6 +154,41 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         await self.check_spam(message)
 
     @commands.Cog.listener()
+    async def on_message_delete(self, message: discord.Message):
+        if not message.guild:
+            return
+
+        member = message.author
+        embed = discord.Embed()
+        embed.title = "Message deleted"
+        embed.set_author(name=member.name, icon_url=member.avatar_url)
+        embed.colour = discord.Colour.orange()
+
+        embed.add_field(name="Member",
+                        value=f"*Mention:* {member.mention} "
+                              f"[*mobile link*](https://discordapp.com/users/{member.id}/)\n"
+                              f"*Roles:* {', '.join([role.mention for role in member.roles[1:]]) or 'None'}",
+                        inline=False)
+
+        message_info = {
+            "Sent at": f"{message.created_at.strftime(utils.time_format)} (UTC)",
+            "Deleted at": f"{datetime.utcnow().strftime(utils.time_format)} (UTC)",
+        }
+
+        embed.add_field(name="Message info",
+                        value=utils.format_lines(message_info) +
+                              f"\n**Channel**: {message.channel.mention}",
+                        inline=False
+                        )
+
+        embed.add_field(name="Message content",
+                        value=message.content[:2000] or "<NO CONTENT>",
+                        inline=False
+                        )
+
+        await self.send_mod_log(message.guild, embed=embed)
+
+    @commands.Cog.listener()
     async def on_member_join(self, member):
         fake_msg = FakeAuthorMessage(member)
         join_after = self.ratelimit_check(self._join_cooldown, fake_msg)
