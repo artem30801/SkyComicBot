@@ -182,7 +182,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                         )
 
         embed.add_field(name="Message content",
-                        value=message.content[:2000] or "<NO CONTENT>",
+                        value=self.format_message_for_embed(message.content) or "<NO CONTENT>",
                         inline=False
                         )
 
@@ -967,6 +967,13 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
     def check_member_spam(self, member):
         raise NotImplementedError
 
+    @staticmethod
+    def format_message_for_embed(message: str):
+        if message:
+            message = message[:2000]
+            message = message.replace("||", "//")
+            return "||" + message + "||"
+        return message
 
 def setup(bot):
     bot.add_cog(AutoMod(bot))
