@@ -21,6 +21,7 @@ from discord_slash import cog_ext, SlashContext
 from discord_slash.utils.manage_commands import create_option, create_choice
 from tortoise import fields
 from tortoise.models import Model
+from fuzzywuzzy import fuzz
 
 import cogs.cog_utils as utils
 import cogs.db_utils as db_utils
@@ -104,6 +105,10 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         self.recent_join = timedelta(days=3)
         self.immediately_join = timedelta(minutes=60)
         self.resume_update_timeout = 30  # seconds
+
+        self.min_edit_percent_for_notify = 15
+        if 'min_edit_percent_for_notify' in bot.config['discord']:
+            self.min_edit_percent_for_notify = bot.config['discord']['min_edit_percent_for_notify']
 
         self.rate = 10  # times
         self.per = 30  # per seconds
@@ -192,6 +197,77 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                             inline=True)
 
         await self.send_message_log(message.guild, embed=embed)
+
+    @commands.Cog.listener()
+    async def on_message_edit(self, before: discord.Message, after: discord.Message):
+        if not before.guild or before.author.bot:
+            return
+
+        member = before.author
+        embed = discord.Embed()
+        embed.title = "Message edited"
+        embed.set_author(name=member.name, icon_url=member.avatar_url)
+        embed.colour = discord.Colour.dark_green()
+
+        embed.add_field(name="Member",
+                        value=f"*Mention:* {member.mention} "
+                              f"[*mobile link*](https://discordapp.com/users/{member.id}/)\n"
+                              f"*Roles:* {', '.join([role.mention for role in member.roles[1:]]) or 'None'}",
+                        inline=False)
+
+        message_info = {
+            "Sent at": f"{before.created_at.strftime(utils.time_format)} (UTC)",
+            "Edited at": f"{datetime.utcnow().strftime(utils.time_format)} (UTC)",
+        }
+
+        embed.add_field(name="Message info",
+                        value=utils.format_lines(message_info) +
+                              f"\n**Channel**: {before.channel.mention}",
+                        inline=False
+                        )
+
+        if before.content != after.content:
+            # ignore insignificant edits
+            if fuzz.ratio(before.content, after.content) > 100 - self.min_edit_percent_for_notify:
+                return
+
+            embed.add_field(name="Message before",
+                            value=self.format_message_for_embed(before.content) or "<NO CONTENT>",
+                            inline=False
+                            )
+            embed.add_field(name="Message after",
+                            value=self.format_message_for_embed(after.content) or "<NO CONTENT>",
+                            inline=False
+                            )
+        else:
+            # AFAIK, right now it's only possible to remove attachments from the message, but just in case?
+            shared_attach_len = min(len(before.attachments), len(after.attachments))
+
+            for attach_before, attach_after in zip(before.attachments, after.attachments):
+                if attach_before.url != attach_after.url:
+                    embed.add_field(
+                        name="Attachment change",
+                        value=f"Before: {attach_before.url}\n"
+                              f"After: {attach_after.url}",
+                        inline=True,
+                    )
+
+            if len(before.attachments) > len(after.attachments):
+                for deleted_attachment in before.attachments[shared_attach_len:]:
+                    embed.add_field(
+                        name="Deleted attachment",
+                        value=deleted_attachment.url,
+                        inline=True,
+                    )
+            else:
+                for added_attachment in after.attachments[shared_attach_len:]:
+                    embed.add_field(
+                        name="Added attachment",
+                        value=added_attachment.url,
+                        inline=True,
+                    )
+
+        await self.send_message_log(before.guild, embed=embed)
 
     @commands.Cog.listener()
     async def on_member_join(self, member):
