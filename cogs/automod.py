@@ -191,7 +191,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                             value=attachment.url,
                             inline=True)
 
-        await self.send_mod_log(message.guild, embed=embed)
+        await self.send_message_log(message.guild, embed=embed)
 
     @commands.Cog.listener()
     async def on_member_join(self, member):
@@ -363,6 +363,11 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         else:
             logger.info(f"Aborting stop attempt for message {message.id}")
             return False
+
+    async def send_message_log(self, guild, content="", **kwargs):
+        channels = await self.bot.get_cog("Channels").get_message_log_channels(guild)
+        for channel in channels:
+            await channel.send(content, **kwargs)
 
     async def send_mod_log(self, guild, content="", **kwargs):
         channels = await self.bot.get_cog("Channels").get_mod_log_channels(guild)
