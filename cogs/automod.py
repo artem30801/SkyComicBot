@@ -186,6 +186,11 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                         inline=False
                         )
 
+        for number, attachment in enumerate(message.attachments):
+            embed.add_field(name=f"Attachment {number + 1}" if len(message.attachments) > 1 else "Attachment",
+                            value=attachment.url,
+                            inline=True)
+
         await self.send_mod_log(message.guild, embed=embed)
 
     @commands.Cog.listener()
