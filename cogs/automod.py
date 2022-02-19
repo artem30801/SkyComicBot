@@ -215,6 +215,10 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                               f"*Roles:* {', '.join([role.mention for role in member.roles[1:]]) or 'None'}",
                         inline=False)
 
+        embed.add_field(name="Message link",
+                        value=f"{after.jump_url}",
+                        inline=False)
+
         message_info = {
             "Sent at": f"{before.created_at.strftime(utils.time_format)} (UTC)",
             "Edited at": f"{datetime.utcnow().strftime(utils.time_format)} (UTC)",
