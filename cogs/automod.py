@@ -230,6 +230,8 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                         inline=False
                         )
 
+        changes_detected = False
+
         if before.content != after.content:
             # ignore insignificant edits
             if fuzz.ratio(before.content, after.content) > 100 - self.min_edit_percent_for_notify:
@@ -243,6 +245,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                             value=self.format_message_for_embed(after.content) or "<NO CONTENT>",
                             inline=False
                             )
+            changes_detected = True
         else:
             # AFAIK, right now it's only possible to remove attachments from the message, but just in case?
             shared_attach_len = min(len(before.attachments), len(after.attachments))
@@ -255,6 +258,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                               f"After: {attach_after.url}",
                         inline=True,
                     )
+                changes_detected = True
 
             if len(before.attachments) > len(after.attachments):
                 for deleted_attachment in before.attachments[shared_attach_len:]:
@@ -263,6 +267,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                         value=deleted_attachment.url,
                         inline=True,
                     )
+                    changes_detected = True
             else:
                 for added_attachment in after.attachments[shared_attach_len:]:
                     embed.add_field(
@@ -270,8 +275,10 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                         value=added_attachment.url,
                         inline=True,
                     )
+                    changes_detected = True
 
-        await self.send_message_log(before.guild, embed=embed)
+        if changes_detected:
+            await self.send_message_log(before.guild, embed=embed)
 
     @commands.Cog.listener()
     async def on_member_join(self, member):
