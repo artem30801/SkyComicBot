@@ -258,7 +258,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                               f"After: {attach_after.url}",
                         inline=True,
                     )
-                changes_detected = True
+                    changes_detected = True
 
             if len(before.attachments) > len(after.attachments):
                 for deleted_attachment in before.attachments[shared_attach_len:]:
