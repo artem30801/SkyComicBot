@@ -1,0 +1,17 @@
+{
+	"auth":
+	{
+		"discord_token": "put_your_token_here",
+		"db_url": "mysql://username:password@ip_address/schema",
+		"timezonedb_key": "put_your_key_here"
+	},
+	"discord":
+	{
+		"guild_ids": [
+			000000000000000
+		],
+		"owner_ids": [
+			000000000000000
+		]
+	}
+}
