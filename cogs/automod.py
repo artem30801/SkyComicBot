@@ -86,12 +86,15 @@ def status_to_emoji(value):
 
 FakeAuthorMessage = collections.namedtuple("FakeAuthorMessage", ["author"])
 FakeGuildMessage = collections.namedtuple("FakeGuildMessage", ["guild"])
-FakeCheckContext = collections.namedtuple("FakeCheckContext", [
-    "guild",
-    "channel",
-    "author",
-    "bot",
-])
+FakeCheckContext = collections.namedtuple(
+    "FakeCheckContext",
+    [
+        "guild",
+        "channel",
+        "author",
+        "bot",
+    ],
+)
 
 
 class AutoMod(utils.AutoLogCog, utils.StartupCog):
@@ -107,40 +110,56 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         self.resume_update_timeout = 30  # seconds
 
         self.min_edit_percent_for_notify = 15
-        if 'min_edit_percent_for_notify' in bot.config['discord']:
-            self.min_edit_percent_for_notify = bot.config['discord']['min_edit_percent_for_notify']
+        if "min_edit_percent_for_notify" in bot.config["discord"]:
+            self.min_edit_percent_for_notify = bot.config["discord"][
+                "min_edit_percent_for_notify"
+            ]
 
         self.rate = 10  # times
         self.per = 30  # per seconds
         self._spam_cooldown = commands.CooldownMapping.from_cooldown(
-            self.rate, self.per, commands.BucketType.user)
+            self.rate, self.per, commands.BucketType.user
+        )
         self._spam_notify_cooldown = commands.CooldownMapping.from_cooldown(
-            1, 10, commands.BucketType.channel)
+            1, 10, commands.BucketType.channel
+        )
         self._spam_report_cooldown = commands.CooldownMapping.from_cooldown(
-            1, 5 * 60, commands.BucketType.guild)
+            1, 5 * 60, commands.BucketType.guild
+        )
 
         self._join_cooldown = commands.CooldownMapping.from_cooldown(
-            2, 60 * 60, commands.BucketType.user)
+            2, 60 * 60, commands.BucketType.user
+        )
         self._join_report_cooldown = commands.CooldownMapping.from_cooldown(
-            1, 15 * 60, commands.BucketType.guild)
+            1, 15 * 60, commands.BucketType.guild
+        )
 
         self.status_messages = {status_type: {} for status_type in StatusType}
-        self.status_error_backoff = {status_type: utils.BackoffStrategyBase(max_attempts=5)
-                                     for status_type in StatusType}
+        self.status_error_backoff = {
+            status_type: utils.BackoffStrategyBase(max_attempts=5)
+            for status_type in StatusType
+        }
 
         self.messages_to_stop = set()
 
-        self.checks = {"blank nick": self.check_nick_blank,
-                       "fresh account": self.check_fresh_account,
-                       "recently joined": self.check_recently_joined,
-                       "immediately joined": self.check_immediate_join,
-                       }
+        self.checks = {
+            "blank nick": self.check_nick_blank,
+            "fresh account": self.check_fresh_account,
+            "recently joined": self.check_recently_joined,
+            "immediately joined": self.check_immediate_join,
+        }
         self.update_options()
 
     def update_options(self):
-        choices = [create_choice(name=check.capitalize(), value=check) for check in self.checks.keys()]
-        choices = [create_choice(name="All", value="all")] + choices + \
-                  [create_choice(name="None (stats and info only)", value="none")]
+        choices = [
+            create_choice(name=check.capitalize(), value=check)
+            for check in self.checks.keys()
+        ]
+        choices = (
+            [create_choice(name="All", value="all")]
+            + choices
+            + [create_choice(name="None (stats and info only)", value="none")]
+        )
 
         self.check_member.options[1]["choices"] = choices
         self.check_server.options[0]["choices"] = choices
@@ -169,32 +188,40 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         embed.set_author(name=member.name, icon_url=member.avatar_url)
         embed.colour = discord.Colour.orange()
 
-        embed.add_field(name="Member",
-                        value=f"*Mention:* {member.mention} "
-                              f"[*mobile link*](https://discordapp.com/users/{member.id}/)\n"
-                              f"*Roles:* {', '.join([role.mention for role in member.roles[1:]]) or 'None'}",
-                        inline=False)
+        embed.add_field(
+            name="Member",
+            value=f"*Mention:* {member.mention} "
+            f"[*mobile link*](https://discordapp.com/users/{member.id}/)\n"
+            f"*Roles:* {', '.join([role.mention for role in member.roles[1:]]) or 'None'}",
+            inline=False,
+        )
 
         message_info = {
             "Sent at": f"{message.created_at.strftime(utils.time_format)} (UTC)",
             "Deleted at": f"{datetime.utcnow().strftime(utils.time_format)} (UTC)",
         }
 
-        embed.add_field(name="Message info",
-                        value=utils.format_lines(message_info) +
-                              f"\n**Channel**: {message.channel.mention}",
-                        inline=False
-                        )
+        embed.add_field(
+            name="Message info",
+            value=utils.format_lines(message_info)
+            + f"\n**Channel**: {message.channel.mention}",
+            inline=False,
+        )
 
-        embed.add_field(name="Message content",
-                        value=self.format_message_for_embed(message.content) or "<NO CONTENT>",
-                        inline=False
-                        )
+        embed.add_field(
+            name="Message content",
+            value=self.format_message_for_embed(message.content) or "<NO CONTENT>",
+            inline=False,
+        )
 
         for number, attachment in enumerate(message.attachments):
-            embed.add_field(name=f"Attachment {number + 1}" if len(message.attachments) > 1 else "Attachment",
-                            value=attachment.url,
-                            inline=True)
+            embed.add_field(
+                name=f"Attachment {number + 1}"
+                if len(message.attachments) > 1
+                else "Attachment",
+                value=attachment.url,
+                inline=True,
+            )
 
         await self.send_message_log(message.guild, embed=embed)
 
@@ -209,53 +236,61 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         embed.set_author(name=member.name, icon_url=member.avatar_url)
         embed.colour = discord.Colour.dark_green()
 
-        embed.add_field(name="Member",
-                        value=f"*Mention:* {member.mention} "
-                              f"[*mobile link*](https://discordapp.com/users/{member.id}/)\n"
-                              f"*Roles:* {', '.join([role.mention for role in member.roles[1:]]) or 'None'}",
-                        inline=False)
+        embed.add_field(
+            name="Member",
+            value=f"*Mention:* {member.mention} "
+            f"[*mobile link*](https://discordapp.com/users/{member.id}/)\n"
+            f"*Roles:* {', '.join([role.mention for role in member.roles[1:]]) or 'None'}",
+            inline=False,
+        )
 
-        embed.add_field(name="Message link",
-                        value=f"{after.jump_url}",
-                        inline=False)
+        embed.add_field(name="Message link", value=f"{after.jump_url}", inline=False)
 
         message_info = {
             "Sent at": f"{before.created_at.strftime(utils.time_format)} (UTC)",
             "Edited at": f"{datetime.utcnow().strftime(utils.time_format)} (UTC)",
         }
 
-        embed.add_field(name="Message info",
-                        value=utils.format_lines(message_info) +
-                              f"\n**Channel**: {before.channel.mention}",
-                        inline=False
-                        )
+        embed.add_field(
+            name="Message info",
+            value=utils.format_lines(message_info)
+            + f"\n**Channel**: {before.channel.mention}",
+            inline=False,
+        )
 
         changes_detected = False
 
         if before.content != after.content:
             # ignore insignificant edits
-            if fuzz.ratio(before.content, after.content) > 100 - self.min_edit_percent_for_notify:
+            if (
+                fuzz.ratio(before.content, after.content)
+                > 100 - self.min_edit_percent_for_notify
+            ):
                 return
 
-            embed.add_field(name="Message before",
-                            value=self.format_message_for_embed(before.content) or "<NO CONTENT>",
-                            inline=False
-                            )
-            embed.add_field(name="Message after",
-                            value=self.format_message_for_embed(after.content) or "<NO CONTENT>",
-                            inline=False
-                            )
+            embed.add_field(
+                name="Message before",
+                value=self.format_message_for_embed(before.content) or "<NO CONTENT>",
+                inline=False,
+            )
+            embed.add_field(
+                name="Message after",
+                value=self.format_message_for_embed(after.content) or "<NO CONTENT>",
+                inline=False,
+            )
             changes_detected = True
         else:
             # AFAIK, right now it's only possible to remove attachments from the message, but just in case?
             shared_attach_len = min(len(before.attachments), len(after.attachments))
 
-            for attach_before, attach_after in zip(before.attachments, after.attachments):
+            for attach_before, attach_after in zip(
+                before.attachments, after.attachments
+            ):
                 if attach_before.url != attach_after.url:
                     embed.add_field(
                         name="Attachment change",
                         value=f"Before: {attach_before.url}\n"
-                              f"After: {attach_after.url}",
+                        f"After: {attach_after.url}",
                         inline=True,
                     )
                     changes_detected = True
@@ -292,7 +327,9 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         to_check = ["blank nick", "fresh account", "immediately joined"]
         embed = self.make_basic_member_embed(member)
         embed.title = "New member joined! Check results"
-        self.add_checks_fields(embed, member, {key: self.checks[key] for key in to_check})
+        self.add_checks_fields(
+            embed, member, {key: self.checks[key] for key in to_check}
+        )
         await self.send_mod_log(member.guild, embed=embed)
 
         blank = self.check_nick_blank(member)[0]
@@ -310,9 +347,12 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             return
 
         logger.info(f"Member {member} left guild {member.guild}")
-        embed = self.make_basic_member_embed(member, additional_info={
-            "Left at": f"{datetime.utcnow().strftime(utils.time_format)} (UTC)"
-        })
+        embed = self.make_basic_member_embed(
+            member,
+            additional_info={
+                "Left at": f"{datetime.utcnow().strftime(utils.time_format)} (UTC)"
+            },
+        )
         embed.title = "Member left!"
         self.add_checks_fields(embed, member, {"fast leave": self.check_fast_leave})
         await self.send_mod_log(member.guild, embed=embed)
@@ -366,7 +406,9 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         await self.update_status(StatusType.GUILD_STATUS)
 
     async def update_status_error(self, exception, status_type):
-        logger.error(f"Caught exception while updating {status_type} status:", exc_info=exception)
+        logger.error(
+            f"Caught exception while updating {status_type} status:", exc_info=exception
+        )
         try:
             delay = next(self.status_error_backoff[status_type])
         except StopIteration:
@@ -387,7 +429,9 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         await self.update_status_error(exception, StatusType.GUILD_STATUS)
 
     @commands.Cog.listener()
-    async def on_raw_reaction_add(self, reaction_payload: discord.RawReactionActionEvent):
+    async def on_raw_reaction_add(
+        self, reaction_payload: discord.RawReactionActionEvent
+    ):
         if reaction_payload.member.bot:
             return
         if str(reaction_payload.emoji) != utils.fail_emote:
@@ -398,17 +442,25 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                 await self.try_stop_status_update(reaction_payload, status_type)
                 break
 
-    async def try_stop_status_update(self, reaction: discord.RawReactionActionEvent, status_type: StatusType):
+    async def try_stop_status_update(
+        self, reaction: discord.RawReactionActionEvent, status_type: StatusType
+    ):
         guild = self.bot.get_guild(reaction.guild_id)
         channel = guild.get_channel(reaction.channel_id)
         message = await channel.fetch_message(reaction.message_id)
 
-        logger.info(f"{reaction.member} trying to stop {status_type} status updates"
-                    f"in {channel} in {guild}. Message ID: {message.id}")
+        logger.info(
+            f"{reaction.member} trying to stop {status_type} status updates"
+            f"in {channel} in {guild}. Message ID: {message.id}"
+        )
 
-        ctx = FakeCheckContext(guild=guild, channel=channel, author=reaction.member, bot=self.bot)
+        ctx = FakeCheckContext(
+            guild=guild, channel=channel, author=reaction.member, bot=self.bot
+        )
         if not await has_server_perms_from_ctx(ctx):
-            logger.info(f"Prevented {reaction.member} from stopping status updates. No server permissions")
+            logger.info(
+                f"Prevented {reaction.member} from stopping status updates. No server permissions"
+            )
             if utils.can_bot_manage_messages(channel):
                 await message.remove_reaction(reaction.emoji, reaction.member)
             else:
@@ -429,7 +481,9 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         await self.update_message_footer_reactions(message, status_type)
         logger.info("Finished message update stop attempt")
 
-    async def try_stop_message_update(self, message: discord.Message, requester: discord.Member):
+    async def try_stop_message_update(
+        self, message: discord.Message, requester: discord.Member
+    ):
         def is_cancel_reaction(reaction_payload: discord.RawReactionActionEvent):
             if reaction_payload.message_id != message.id:
                 return False
@@ -438,10 +492,16 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             return str(reaction_payload.emoji) == utils.refresh_emote
 
         try:
-            await self.bot.wait_for('raw_reaction_add', timeout=self.resume_update_timeout, check=is_cancel_reaction)
+            await self.bot.wait_for(
+                "raw_reaction_add",
+                timeout=self.resume_update_timeout,
+                check=is_cancel_reaction,
+            )
         except asyncio.TimeoutError:
             # There was no reaction, removing status message
-            status_message = await utils.OrmBackoffStrategy().run_task(StatusMessage.get_or_none, message_id=message.id)
+            status_message = await utils.OrmBackoffStrategy().run_task(
+                StatusMessage.get_or_none, message_id=message.id
+            )
             if status_message:
                 await status_message.delete()
 
@@ -473,9 +533,11 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         embed = discord.Embed()
         embed.set_author(name=member.name, icon_url=member.avatar_url)
         embed.title = ":warning: Warning! Join spam!"
-        embed.description = f"{member.mention} {member} (ID {member.id}) " \
-                            f"[*mobile link*](https://discordapp.com/users/{member.id}/)\n" \
-                            f"Joined more than 1 time in 60 minutes span."
+        embed.description = (
+            f"{member.mention} {member} (ID {member.id}) "
+            f"[*mobile link*](https://discordapp.com/users/{member.id}/)\n"
+            f"Joined more than 1 time in 60 minutes span."
+        )
         embed.colour = discord.Colour.red()
 
         await self.send_mod_log(member.guild, embed=embed)
@@ -505,41 +567,61 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
 
         no = "Not available"
         git_hash = (await utils.run(f"git describe --always"))[0] or no
-        commits_behind = (await utils.run(f"git fetch; "
-                                          f"git rev-list HEAD...origin/master --count"))[0]
+        commits_behind = (
+            await utils.run(f"git fetch; " f"git rev-list HEAD...origin/master --count")
+        )[0]
         commits_behind = commits_behind.strip()
         commits_behind = int(commits_behind) or "Up to date" if commits_behind else no
-        embed.add_field(name="Version",
-                        value=utils.format_lines({
-                            "Version number": self.bot.version,
-                            "Commit Hash": git_hash.strip(),
-                            "Commits Behind": commits_behind,
-                        }))
+        embed.add_field(
+            name="Version",
+            value=utils.format_lines(
+                {
+                    "Version number": self.bot.version,
+                    "Commit Hash": git_hash.strip(),
+                    "Commits Behind": commits_behind,
+                }
+            ),
+        )
 
-        embed.add_field(name="Statistics",
-                        value=utils.format_lines({
-                            "Servers": len(self.bot.guilds),
-                            "Users": len(self.bot.users),
-                            "Admins": len(await self.bot.get_cog("Permissions").get_permissions_list())
-                        }))
+        embed.add_field(
+            name="Statistics",
+            value=utils.format_lines(
+                {
+                    "Servers": len(self.bot.guilds),
+                    "Users": len(self.bot.users),
+                    "Admins": len(
+                        await self.bot.get_cog("Permissions").get_permissions_list()
+                    ),
+                }
+            ),
+        )
 
-        embed.add_field(name="Running",
-                        value=utils.format_lines({
-                            "Since": f"{started_at.strftime(utils.time_format)} (GMT)",
-                            "For": display_delta(delta),
-                            "Last activity check": f"{last_active.strftime(utils.time_format)} (GMT)",
-                        }), inline=False)
+        embed.add_field(
+            name="Running",
+            value=utils.format_lines(
+                {
+                    "Since": f"{started_at.strftime(utils.time_format)} (GMT)",
+                    "For": display_delta(delta),
+                    "Last activity check": f"{last_active.strftime(utils.time_format)} (GMT)",
+                }
+            ),
+            inline=False,
+        )
 
         extensions = {}
         total_loaded = 0
         for key in self.bot.initial_extensions:
             loaded = key in self.bot.extensions
-            extensions[f"{'+' if loaded else '-'} {key}"] = "Online" if loaded else "Offline"
+            extensions[f"{'+' if loaded else '-'} {key}"] = (
+                "Online" if loaded else "Offline"
+            )
             total_loaded += loaded
 
-        embed.add_field(name=f"Loaded extensions "
-                             f"({total_loaded:02d}/{len(self.bot.initial_extensions):02d} online)",
-                        value=utils.format_lines(extensions, lang="diff", delimiter=" :"))
+        embed.add_field(
+            name=f"Loaded extensions "
+            f"({total_loaded:02d}/{len(self.bot.initial_extensions):02d} online)",
+            value=utils.format_lines(extensions, lang="diff", delimiter=" :"),
+        )
 
         process = psutil.Process(os.getpid())
         with process.oneshot():
@@ -556,20 +638,26 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         else:
             storage_size = no
 
-        embed.add_field(name="Resource consumption",
-                        value=utils.format_lines({
-                            "CPU": f"{cpu_p:.1%}",
-                            "RAM": f"{utils.format_size(memory)} ({memory_p:.1f}%)",
-                            "Disk": f"{utils.format_size(disk_info.used)} "
-                                    f"({disk_info.percent:.1f}%)",
-                            "Storage": storage_size,
-                            "Latency": f"{math.ceil(self.bot.latency * 100)} ms"
-                        }))
+        embed.add_field(
+            name="Resource consumption",
+            value=utils.format_lines(
+                {
+                    "CPU": f"{cpu_p:.1%}",
+                    "RAM": f"{utils.format_size(memory)} ({memory_p:.1f}%)",
+                    "Disk": f"{utils.format_size(disk_info.used)} "
+                    f"({disk_info.percent:.1f}%)",
+                    "Storage": storage_size,
+                    "Latency": f"{math.ceil(self.bot.latency * 100)} ms",
+                }
+            ),
+        )
 
         embed.set_footer(text="Yours truly!", icon_url=self.bot.user.avatar_url)
         return embed
 
-    async def make_guild_status_embed(self, guild: discord.Guild, checks: dict = None) -> discord.Embed:
+    async def make_guild_status_embed(
+        self, guild: discord.Guild, checks: dict = None
+    ) -> discord.Embed:
         checks = checks or self.checks
         embed = discord.Embed()
         embed.set_author(name=guild.name, icon_url=guild.icon_url)
@@ -588,7 +676,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                 value += "Passed"
             else:
                 total_failed += 1
-                failed_str = '\n'.join(failed)
+                failed_str = "\n".join(failed)
                 value += f"Failed **{len(failed)}/{guild.member_count}** members:\n {failed_str}"
 
             embed.add_field(name=check.capitalize(), value=value, inline=False)
@@ -597,33 +685,46 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         embed.title = "Server check results"
         # embed.description =
         if checks:
-            value = utils.format_lines({
-                "Checks performed": f"{len(checks)}/{len(self.checks)}",
-                "Checks failed": f"{total_failed}/{len(checks)}",
-                "Members failed checks": f"{len(failed_members)}/{guild.member_count}"
-            })
+            value = utils.format_lines(
+                {
+                    "Checks performed": f"{len(checks)}/{len(self.checks)}",
+                    "Checks failed": f"{total_failed}/{len(checks)}",
+                    "Members failed checks": f"{len(failed_members)}/{guild.member_count}",
+                }
+            )
             embed.insert_field_at(0, name="Summary", value=value)
 
-        embed.insert_field_at(0, name="Statistics",
-                              value=utils.format_lines({
-                                  "Members": guild.member_count,
-                                  "Roles": len(guild.roles),
-                                  "Emojis": f"{len(guild.emojis)}/{guild.emoji_limit}"
-                              }))
-        embed.set_footer(text="Use `/check member member: <member>` to check an individual member!",
-                         icon_url=guild.me.avatar_url)
+        embed.insert_field_at(
+            0,
+            name="Statistics",
+            value=utils.format_lines(
+                {
+                    "Members": guild.member_count,
+                    "Roles": len(guild.roles),
+                    "Emojis": f"{len(guild.emojis)}/{guild.emoji_limit}",
+                }
+            ),
+        )
+        embed.set_footer(
+            text="Use `/check member member: <member>` to check an individual member!",
+            icon_url=guild.me.avatar_url,
+        )
         return embed
 
     @staticmethod
-    def make_basic_member_embed(member: discord.Member, additional_info: Optional[dict] = None) -> discord.Embed:
+    def make_basic_member_embed(
+        member: discord.Member, additional_info: Optional[dict] = None
+    ) -> discord.Embed:
         embed = discord.Embed()
         embed.set_author(name=member.name, icon_url=member.avatar_url)
 
-        embed.add_field(name="Member",
-                        value=f"*Mention:* {member.mention} "
-                              f"[*mobile link*](https://discordapp.com/users/{member.id}/)\n"
-                              f"*Roles:* {', '.join([role.mention for role in member.roles[1:]]) or 'None'}",
-                        inline=False)
+        embed.add_field(
+            name="Member",
+            value=f"*Mention:* {member.mention} "
+            f"[*mobile link*](https://discordapp.com/users/{member.id}/)\n"
+            f"*Roles:* {', '.join([role.mention for role in member.roles[1:]]) or 'None'}",
+            inline=False,
+        )
 
         user_info = {
             "Name": member,
@@ -639,7 +740,9 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
 
         return embed
 
-    def add_checks_fields(self, embed: discord.Embed, member: discord.Member, checks: dict):
+    def add_checks_fields(
+        self, embed: discord.Embed, member: discord.Member, checks: dict
+    ):
         failed_count = 0
 
         for check, function in checks.items():
@@ -648,32 +751,43 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             if status is False:
                 failed_count += 1
 
-            embed.add_field(name=check.capitalize(),
-                            value=f"{status_to_emoji(status)} {'Failed' if status is False else 'Passed'}"
-                                  f"{addition}",
-                            inline=False)
+            embed.add_field(
+                name=check.capitalize(),
+                value=f"{status_to_emoji(status)} {'Failed' if status is False else 'Passed'}"
+                f"{addition}",
+                inline=False,
+            )
 
         embed.colour = self.get_check_color(failed_count, len(checks))
         if not embed.title:
             embed.title = "User check results"
         if checks and not embed.description:
-            embed.description = f"**{failed_count}/{len(checks)}** checks failed" if failed_count > 0 \
+            embed.description = (
+                f"**{failed_count}/{len(checks)}** checks failed"
+                if failed_count > 0
                 else "All checks passed!"
+            )
 
-    def update_message_footer_text(self, message_id: int, embed: discord.Embed, status_type: StatusType):
+    def update_message_footer_text(
+        self, message_id: int, embed: discord.Embed, status_type: StatusType
+    ):
         icon_url = embed.footer.icon_url
         if message_id in self.messages_to_stop:
-            embed.set_footer(text=f"Press {utils.refresh_emote} in next"
-                                  f" {self.resume_update_timeout} seconds to resume updates",
-                             icon_url=icon_url)
+            embed.set_footer(
+                text=f"Press {utils.refresh_emote} in next"
+                f" {self.resume_update_timeout} seconds to resume updates",
+                icon_url=icon_url,
+            )
             return
 
         status_messages = self.status_messages[status_type]
         if message_id in status_messages:
             task = self.get_status_update_task(status_type)
             update_period = utils.display_task_period(task)
-            embed.set_footer(text=f"Updates every {update_period}. Press {utils.fail_emote} to stop updates",
-                             icon_url=icon_url)
+            embed.set_footer(
+                text=f"Updates every {update_period}. Press {utils.fail_emote} to stop updates",
+                icon_url=icon_url,
+            )
         else:
             embed.set_footer(text="Updates stopped", icon_url=icon_url)
 
@@ -697,8 +811,11 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         else:
             await message.remove_reaction(emote, self.bot.user)
 
-    async def ensure_message_reactions(self, message: Union[discord.Message, discord.PartialMessage],
-                                       status_type: StatusType):
+    async def ensure_message_reactions(
+        self,
+        message: Union[discord.Message, discord.PartialMessage],
+        status_type: StatusType,
+    ):
         """Makes sure that status message has correct reactions for the current state"""
         if message.id in self.messages_to_stop:
             await message.add_reaction(utils.refresh_emote)
@@ -713,7 +830,9 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             await self._remove_bot_reaction(message, utils.refresh_emote)
 
     async def update_status_tasks(self, status_type: StatusType):
-        messages = await utils.OrmBackoffStrategy().run_task(StatusMessage.filter, status_type=status_type.value)
+        messages = await utils.OrmBackoffStrategy().run_task(
+            StatusMessage.filter, status_type=status_type.value
+        )
         messages = {message.message_id: message.channel_id for message in messages}
 
         self.status_messages[status_type] = messages
@@ -724,25 +843,30 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         else:
             utils.ensure_tasks_stopped(status_tasks)
 
-    @cog_ext.cog_subcommand(base="check", name="member",
-                            options=[
-                                create_option(
-                                    name="member",
-                                    description="Member to perform check on",
-                                    option_type=discord.Member,
-                                    required=True,
-                                ),
-                                create_option(
-                                    name="check",
-                                    description="Check to perform",
-                                    option_type=str,
-                                    required=False,
-                                    choices=[]
-                                ),
-                            ],
-                            guild_ids=guild_ids)
+    @cog_ext.cog_subcommand(
+        base="check",
+        name="member",
+        options=[
+            create_option(
+                name="member",
+                description="Member to perform check on",
+                option_type=discord.Member,
+                required=True,
+            ),
+            create_option(
+                name="check",
+                description="Check to perform",
+                option_type=str,
+                required=False,
+                choices=[],
+            ),
+        ],
+        guild_ids=guild_ids,
+    )
     @has_server_perms()
-    async def check_member(self, ctx: SlashContext, member: discord.Member, check="all"):
+    async def check_member(
+        self, ctx: SlashContext, member: discord.Member, check="all"
+    ):
         """Performs specified (or all) security checks on given member"""
         if not isinstance(member, discord.Member):
             raise commands.BadArgument(f"Failed to get member '{member}' info!")
@@ -753,29 +877,35 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         self.add_checks_fields(embed, member, to_check)
         await ctx.send(embed=embed)
 
-    @cog_ext.cog_subcommand(base="check", name="server",
-                            options=[
-                                create_option(
-                                    name="check",
-                                    description="Check to perform (all by default or if auto-update enabled)",
-                                    option_type=str,
-                                    required=False,
-                                    choices=[]
-                                ),
-                                create_option(
-                                    name="auto-update",
-                                    description="Enables auto-update for this message (one per channel)",
-                                    option_type=bool,
-                                    required=False
-                                ),
-                            ],
-                            connector={"auto-update": "auto_update"},
-                            guild_ids=guild_ids)
+    @cog_ext.cog_subcommand(
+        base="check",
+        name="server",
+        options=[
+            create_option(
+                name="check",
+                description="Check to perform (all by default or if auto-update enabled)",
+                option_type=str,
+                required=False,
+                choices=[],
+            ),
+            create_option(
+                name="auto-update",
+                description="Enables auto-update for this message (one per channel)",
+                option_type=bool,
+                required=False,
+            ),
+        ],
+        connector={"auto-update": "auto_update"},
+        guild_ids=guild_ids,
+    )
     @has_server_perms()
     async def check_server(self, ctx: SlashContext, check="all", auto_update=False):
         """Runs selected checks on all members of the server, shows server statistics"""
         if auto_update and not ctx.channel:
-            await ctx.send("Messages with auto-update are not supported outside of normal channels", hidden=True)
+            await ctx.send(
+                "Messages with auto-update are not supported outside of normal channels",
+                hidden=True,
+            )
             return
 
         await ctx.defer(hidden=False)
@@ -791,21 +921,27 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             # Add update info after saving message to DB in case DB errors to prevent misleading info in message
             await self.update_message_footer_reactions(message, StatusType.GUILD_STATUS)
 
-    @cog_ext.cog_subcommand(base="check", name="bot",
-                            options=[
-                                create_option(
-                                    name="auto-update",
-                                    description="Enables auto-update for this message (one per channel)",
-                                    option_type=bool,
-                                    required=False
-                                ),
-                            ],
-                            connector={"auto-update": "auto_update"},
-                            guild_ids=guild_ids)
+    @cog_ext.cog_subcommand(
+        base="check",
+        name="bot",
+        options=[
+            create_option(
+                name="auto-update",
+                description="Enables auto-update for this message (one per channel)",
+                option_type=bool,
+                required=False,
+            ),
+        ],
+        connector={"auto-update": "auto_update"},
+        guild_ids=guild_ids,
+    )
     async def check_bot(self, ctx: SlashContext, auto_update=False):
         """Shows bot information, statistics and status"""
         if auto_update and not ctx.channel:
-            await ctx.send("Messages with auto-update are not supported outside of normal channels", hidden=True)
+            await ctx.send(
+                "Messages with auto-update are not supported outside of normal channels",
+                hidden=True,
+            )
             return
 
         if auto_update:
@@ -823,49 +959,64 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             # Add update info after saving message to DB in case DB errors to prevent misleading info in message
             await self.update_message_footer_reactions(message, StatusType.BOT_STATUS)
 
-    @cog_ext.cog_subcommand(base="auto-updates", name="stop",
-                            options=[
-                                create_option(
-                                    name="id",
-                                    description="Message ID in the database",
-                                    option_type=int,
-                                    required=False
-                                ),
-                                create_option(
-                                    name="link",
-                                    description="Link to the update message",
-                                    option_type=str,
-                                    required=False
-                                ),
-                            ],
-                            connector={
-                                "id": "db_id",
-                                "link": "msg_link",
-                            },
-                            guild_ids=guild_ids)
+    @cog_ext.cog_subcommand(
+        base="auto-updates",
+        name="stop",
+        options=[
+            create_option(
+                name="id",
+                description="Message ID in the database",
+                option_type=int,
+                required=False,
+            ),
+            create_option(
+                name="link",
+                description="Link to the update message",
+                option_type=str,
+                required=False,
+            ),
+        ],
+        connector={
+            "id": "db_id",
+            "link": "msg_link",
+        },
+        guild_ids=guild_ids,
+    )
     @has_server_perms()
-    async def stop_status(self, ctx: SlashContext, db_id: int = None, msg_link: str = None):
+    async def stop_status(
+        self, ctx: SlashContext, db_id: int = None, msg_link: str = None
+    ):
         """Stops update for the status message by DB id or message link"""
         await ctx.defer(hidden=True)
-        logger.info(f"{ctx.author} trying to stop status update by id '{db_id}' or link '{msg_link}'")
+        logger.info(
+            f"{ctx.author} trying to stop status update by id '{db_id}' or link '{msg_link}'"
+        )
         if db_id is None and msg_link is None:
             raise commands.BadArgument("Please provide message link or ID")
 
         db_message = None
         if db_id is not None:
-            db_message = await utils.OrmBackoffStrategy().run_task(StatusMessage.get_or_none, id=db_id)
+            db_message = await utils.OrmBackoffStrategy().run_task(
+                StatusMessage.get_or_none, id=db_id
+            )
             if db_message is None:
-                raise commands.BadArgument(f"There is no status message with id {db_id}")
+                raise commands.BadArgument(
+                    f"There is no status message with id {db_id}"
+                )
 
         message = None
         if not db_message and msg_link:
             message = await utils.get_message_from_link(self.bot, msg_link)
-            db_message = await utils.OrmBackoffStrategy().run_task(StatusMessage.get_or_none,
-                                                                   guild_id=message.guild.id,
-                                                                   channel_id=message.channel.id,
-                                                                   message_id=message.id)
+            db_message = await utils.OrmBackoffStrategy().run_task(
+                StatusMessage.get_or_none,
+                guild_id=message.guild.id,
+                channel_id=message.channel.id,
+                message_id=message.id,
+            )
             if db_message is None:
-                raise commands.BadArgument("Looks like linked message is not a status message with auto-updates")
+                raise commands.BadArgument(
+                    "Looks like linked message is not a status message with auto-updates"
+                )
 
         await utils.OrmBackoffStrategy().run_task(db_message.delete)
         status_type = StatusType(db_message.status_type)
@@ -904,16 +1055,23 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         embed = discord.Embed()
         embed.title = "Messages with auto-updates"
 
-        bot_status_messages = [message for message in messages if message.status_type == StatusType.BOT_STATUS.value]
+        bot_status_messages = [
+            message
+            for message in messages
+            if message.status_type == StatusType.BOT_STATUS.value
+        ]
         messages_info = []
         for message in bot_status_messages:
             guild = self.bot.get_guild(message.guild_id)
             channel = guild.get_channel(message.channel_id)
             messages_info.append(
                 f"[Message](https://discord.com/channels/{guild.id}/{channel.id}/{message.message_id}) "
-                f"in {channel.mention} in {guild} (ID {message.id})")
+                f"in {channel.mention} in {guild} (ID {message.id})"
+            )
         if messages_info:
-            embed.add_field(name="Bot status messages", value="\n".join(messages_info), inline=False)
+            embed.add_field(
+                name="Bot status messages", value="\n".join(messages_info), inline=False
+            )
 
         guilds_messages = {}
         for message in messages:
@@ -922,30 +1080,40 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             if message.guild_id not in guilds_messages:
                 guilds_messages[message.guild_id] = []
             guilds_messages[message.guild_id].append(message)
-        for guild_id, messages in guilds_messages.items():  # todo make them like bot status messages
+        for (
+            guild_id,
+            messages,
+        ) in guilds_messages.items():  # todo make them like bot status messages
             guild = self.bot.get_guild(guild_id)
             messages_info = []
             for message in messages:
                 channel = guild.get_channel(message.channel_id)
                 messages_info.append(
                     f"[Message](https://discord.com/channels/{guild.id}/{channel.id}/{message.message_id}) "
-                    f"in {channel.mention} (ID {message.id})")
-            embed.add_field(name=f"{guild} status messages", value="\n".join(messages_info), inline=False)
+                    f"in {channel.mention} (ID {message.id})"
+                )
+            embed.add_field(
+                name=f"{guild} status messages",
+                value="\n".join(messages_info),
+                inline=False,
+            )
 
         await ctx.send(embed=embed, hidden=True)
 
     @staticmethod
     async def save_status_message(message: discord.Message, status_type: StatusType):
-        status_message = await utils.OrmBackoffStrategy().run_task(StatusMessage.get_or_none,
-                                                                   guild_id=message.guild.id,
-                                                                   channel_id=message.channel.id,
-                                                                   status_type=status_type.value)
+        status_message = await utils.OrmBackoffStrategy().run_task(
+            StatusMessage.get_or_none,
+            guild_id=message.guild.id,
+            channel_id=message.channel.id,
+            status_type=status_type.value,
+        )
         if not status_message:
             # Can't use get_or_create since message_id is mandatory and I don't want to make it not mandatory
             status_message = StatusMessage(
                 guild_id=message.guild.id,
                 channel_id=message.channel.id,
-                status_type=status_type.value
+                status_type=status_type.value,
             )
         status_message.message_id = message.id
         await utils.OrmBackoffStrategy().run_task(status_message.save)
@@ -963,11 +1131,13 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             try:
                 deleted = await message.channel.purge(  # limit=self.rate,
                     after=message.created_at - timedelta(seconds=self.per),
-                    check=same_author, bulk=True)
+                    check=same_author,
+                    bulk=True,
+                )
             except discord.NotFound:
                 return None
             else:
-                logger.info('Deleted {} message(s)'.format(len(deleted)))
+                logger.info("Deleted {} message(s)".format(len(deleted)))
             return deleted
         return None
 
@@ -990,17 +1160,29 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
                 except discord.NotFound:
                     pass
             else:
-                logger.info(f"Can't delete spam message"
-                            f"Don't have 'manage messages' permissions in '{message.guild}'")
+                logger.info(
+                    f"Can't delete spam message"
+                    f"Don't have 'manage messages' permissions in '{message.guild}'"
+                )
 
         if notify_after is None:
-            delete_after = 10 if report_after is not None else (None if deleted is None else self.per + 10)  # None
-            deleted_msg = "" if deleted is None else f"I deleted {len(deleted)} of your last messages. "
+            delete_after = (
+                10
+                if report_after is not None
+                else (None if deleted is None else self.per + 10)
+            )  # None
+            deleted_msg = (
+                ""
+                if deleted is None
+                else f"I deleted {len(deleted)} of your last messages. "
+            )
 
-            await message.channel.send(f"ఠ_ఠ Slow down, {message.author.mention}! You are spamming! {deleted_msg}"
-                                       f"You may send messages again in {round(retry_after)} seconds.",
-                                       allowed_mentions=discord.AllowedMentions.none(),
-                                       delete_after=delete_after)
+            await message.channel.send(
+                f"ఠ_ఠ Slow down, {message.author.mention}! You are spamming! {deleted_msg}"
+                f"You may send messages again in {round(retry_after)} seconds.",
+                allowed_mentions=discord.AllowedMentions.none(),
+                delete_after=delete_after,
+            )
 
         if report_after is None:
             await asyncio.sleep(self.per + 1)
@@ -1016,10 +1198,12 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         embed = discord.Embed()
         embed.set_author(name=member.name, icon_url=member.avatar_url)
         embed.title = ":warning: Warning! Message spam!"
-        embed.description = f"{member.mention} {member} (ID {member.id}) " \
-                            f"[*mobile link*](https://discordapp.com/users/{member.id}/)\n" \
-                            f"Sending messages faster than {self.rate} messages per {self.per} seconds\n" \
-                            f"Deleted **{len(deleted)}** messages automatically.\n"
+        embed.description = (
+            f"{member.mention} {member} (ID {member.id}) "
+            f"[*mobile link*](https://discordapp.com/users/{member.id}/)\n"
+            f"Sending messages faster than {self.rate} messages per {self.per} seconds\n"
+            f"Deleted **{len(deleted)}** messages automatically.\n"
+        )
 
         embed.colour = discord.Colour.red()
         await self.send_mod_log(member.guild, embed=embed)
@@ -1028,38 +1212,53 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         return check_blank(member.display_name, self.blank_threshold), None
 
     async def notify_nick_blank(self, member: discord.Member):
-        logger.important(f"Member {self.format_caller(member)} has blank nickname ({member.display_name})")
+        logger.important(
+            f"Member {self.format_caller(member)} has blank nickname ({member.display_name})"
+        )
 
         channels = await self.bot.get_cog("Channels").get_home_channels(member.guild)
         for channel in channels:
-            await channel.send(f"Hey, {member.mention}, you have a blank or hard-readable username!\n"
-                               f"Please change it so it has at least {self.blank_threshold + 1} "
-                               f"letters, numbers or some meaningful symbols.\n Thank you (*^_^)／")
+            await channel.send(
+                f"Hey, {member.mention}, you have a blank or hard-readable username!\n"
+                f"Please change it so it has at least {self.blank_threshold + 1} "
+                f"letters, numbers or some meaningful symbols.\n Thank you (*^_^)／"
+            )
             return  # No need to send few notification, if there is a few home channels
 
     def check_fresh_account(self, member: discord.Member):
         return self._check_recent(member.created_at, "Account created:\n{} ago")
 
     def check_recently_joined(self, member: discord.Member):
-        return self._check_recent(member.joined_at or datetime.utcnow(), "Joined:\n{} ago")
+        return self._check_recent(
+            member.joined_at or datetime.utcnow(), "Joined:\n{} ago"
+        )
 
     def _check_recent(self, time, format_string="{}"):  # true = ok
         now = datetime.utcnow()
         delta = relativedelta.relativedelta(now, time)
         abs_delta = now - time
-        return abs_delta >= self.recent_join, format_string.format(utils.display_delta(delta))
+        return abs_delta >= self.recent_join, format_string.format(
+            utils.display_delta(delta)
+        )
 
     def check_immediate_join(self, member):
         delta = relativedelta.relativedelta(member.joined_at, member.created_at)
         abs_delta = member.joined_at - member.created_at
-        result = abs_delta >= self.immediately_join or (None if self.check_recently_joined(member)[0] else False)
-        return result, "Between registration and joining:\n" + utils.display_delta(delta)
+        result = abs_delta >= self.immediately_join or (
+            None if self.check_recently_joined(member)[0] else False
+        )
+        return result, "Between registration and joining:\n" + utils.display_delta(
+            delta
+        )
 
     def check_fast_leave(self, member):
         now = datetime.utcnow()
         delta = relativedelta.relativedelta(now, member.joined_at)
         abs_delta = now - member.joined_at
-        return abs_delta >= self.immediately_join, "Between joining and leaving:\n" + utils.display_delta(delta)
+        return (
+            abs_delta >= self.immediately_join,
+            "Between joining and leaving:\n" + utils.display_delta(delta),
+        )
 
     def check_member_spam(self, member):
         raise NotImplementedError
@@ -1071,6 +1270,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             message = message.replace("||", "//")
             return "||" + message + "||"
         return message
+
 
 def setup(bot):
     bot.add_cog(AutoMod(bot))
