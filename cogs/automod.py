@@ -2,11 +2,10 @@ import asyncio
 import collections
 import logging
 import math
-from typing import Union
+from typing import Dict, List, Union
 
 import psutil
 import os
-import re
 import unicodedata
 from enum import Enum
 from datetime import datetime, timedelta
@@ -61,6 +60,12 @@ class StatusMessage(Model):
     channel_id = fields.BigIntField()
     message_id = fields.BigIntField()
     status_type = fields.IntField()
+
+
+class UserSlowmode(Model):
+    user_id = fields.BigIntField(pk=True)
+    rate = fields.IntField()
+    per = fields.IntField()
 
 
 logger = logging.getLogger(__name__)
@@ -121,10 +126,10 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             self.rate, self.per, commands.BucketType.user
         )
         self._spam_notify_cooldown = commands.CooldownMapping.from_cooldown(
-            1, 10, commands.BucketType.channel
+            1, self.per * 2, commands.BucketType.user
         )
         self._spam_report_cooldown = commands.CooldownMapping.from_cooldown(
-            1, 5 * 60, commands.BucketType.guild
+            1, 5 * 60, commands.BucketType.user
         )
 
         self._join_cooldown = commands.CooldownMapping.from_cooldown(
@@ -133,6 +138,8 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         self._join_report_cooldown = commands.CooldownMapping.from_cooldown(
             1, 15 * 60, commands.BucketType.guild
         )
+
+        self._user_slowmode_cooldowns: Dict[int, commands.Cooldown] = dict()
 
         self.status_messages = {status_type: {} for status_type in StatusType}
         self.status_error_backoff = {
@@ -167,6 +174,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
     async def on_startup(self):
         for status_type in StatusType:
             await self.update_status_tasks(status_type)
+        await self.update_user_slowmodes()
 
     @commands.Cog.listener()
     async def on_message(self, message):
@@ -843,6 +851,18 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         else:
             utils.ensure_tasks_stopped(status_tasks)
 
+    async def update_user_slowmodes(self):
+        slowmodes: List[UserSlowmode] = await utils.OrmBackoffStrategy().run_task(
+            UserSlowmode.all
+        )
+
+        self._user_slowmode_cooldowns = {
+            slowmode.user_id: commands.Cooldown(
+                slowmode.rate, slowmode.per, commands.BucketType.user
+            )
+            for slowmode in slowmodes
+        }
+
     @cog_ext.cog_subcommand(
         base="check",
         name="member",
@@ -1100,6 +1120,120 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
 
         await ctx.send(embed=embed, hidden=True)
 
+    @cog_ext.cog_subcommand(
+        base="slowmode",
+        name="set",
+        options=[
+            create_option(
+                "member",
+                "Member to set slowmode for",
+                option_type=discord.Member,
+                required=True,
+            ),
+            create_option(
+                "seconds",
+                "Slowmode window size in seconds",
+                option_type=float,
+                required=True,
+            ),
+            create_option(
+                "amount",
+                "Amount of messages allowed in the slowmode window",
+                option_type=int,
+                required=True,
+            ),
+        ],
+        connector={"member": "member", "seconds": "seconds", "amount": "amount"},
+        guild_ids=guild_ids,
+    )
+    @has_server_perms()
+    async def set_slowmode(
+        self, ctx: SlashContext, member: discord.Member, seconds: float, amount: int
+    ):
+        await ctx.defer(hidden=True)
+        if not isinstance(member, discord.Member):
+            raise commands.BadArgument(f"Failed to get member '{member}' info!")
+
+        await utils.OrmBackoffStrategy().run_task(
+            UserSlowmode.update_or_create,
+            user_id=member.id,
+            defaults=dict(rate=amount, per=seconds),
+        )
+
+        await self.update_user_slowmodes()
+        await ctx.send(
+            f"Set slowmode for {member.mention} to `{amount}` messages per `{seconds:.1f}` seconds  ",
+            allowed_mentions=discord.AllowedMentions.none(),
+            hidden=True,
+        )
+
+    @cog_ext.cog_subcommand(
+        base="slowmode",
+        name="remove",
+        options=[
+            create_option(
+                "member",
+                "Member to remove slowmode from",
+                option_type=discord.Member,
+                required=True,
+            ),
+        ],
+        connector={"member": "member"},
+        guild_ids=guild_ids,
+    )
+    @has_server_perms()
+    async def remove_slowmode(self, ctx: SlashContext, member: discord.Member):
+        await ctx.defer(hidden=True)
+        if not isinstance(member, discord.Member):
+            raise commands.BadArgument(f"Failed to get member '{member}' info!")
+
+        slowmode: UserSlowmode = await utils.OrmBackoffStrategy().run_task(
+            UserSlowmode.get_or_none, user_id=member.id
+        )
+        if slowmode:
+            await utils.OrmBackoffStrategy().run_task(slowmode.delete)
+            await self.update_user_slowmodes()
+            await ctx.send(
+                f"Removed slowmode for {member.mention}",
+                allowed_mentions=discord.AllowedMentions.none(),
+                hidden=True,
+            )
+        else:
+            await ctx.send(
+                f"No slowmode set for {member.mention}",
+                allowed_mentions=discord.AllowedMentions.none(),
+                hidden=True,
+            )
+
+    @cog_ext.cog_subcommand(
+        base="slowmode",
+        name="list",
+        guild_ids=guild_ids,
+    )
+    @has_server_perms()
+    async def list_slowmode(self, ctx: SlashContext):
+        async def format_slowmode(user_id, slowmode: commands.Cooldown):
+            user: discord.User = await ctx.bot.fetch_user(user_id)
+            if user is None:
+                return f"{user_id} - Unknown user"
+
+            amount = slowmode.rate
+            seconds = slowmode.per
+            return f"{user.display_name}:{user.mention} - `{amount}` messages per `{seconds:.1f}` seconds (can send in `{slowmode.get_retry_after():.1f}` seconds)"
+
+        await ctx.defer(hidden=True)
+
+        slowmodes = self._user_slowmode_cooldowns
+        if not slowmodes:
+            await ctx.send("No slowmodes set", hidden=True)
+            return
+
+        slowmode_lines = [
+            await format_slowmode(user_id, slowmode)
+            for user_id, slowmode in slowmodes.items()
+        ]
+        await ctx.send("\n".join(slowmode_lines), hidden=True)
+
     @staticmethod
     async def save_status_message(message: discord.Message, status_type: StatusType):
         status_message = await utils.OrmBackoffStrategy().run_task(
@@ -1119,17 +1253,18 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         await utils.OrmBackoffStrategy().run_task(status_message.save)
 
     @staticmethod
-    def ratelimit_check(cooldown, message):
+    def ratelimit_check(cooldown: commands.CooldownMapping, message: discord.Message):
         bucket = cooldown.get_bucket(message)
-        return bucket.update_rate_limit()
+        return bucket.update_rate_limit()  # message.created_at.timestamp()
 
-    async def _purge(self, message):
+    async def _purge(self, message: discord.Message):
         def same_author(m):
             return m.author == message.author
 
-        if utils.can_bot_manage_messages(message.channel):
+        channel: discord.TextChannel = message.channel
+        if utils.can_bot_manage_messages(channel):
             try:
-                deleted = await message.channel.purge(  # limit=self.rate,
+                deleted = await channel.purge(
                     after=message.created_at - timedelta(seconds=self.per),
                     check=same_author,
                     bulk=True,
@@ -1137,12 +1272,30 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             except discord.NotFound:
                 return None
             else:
-                logger.info("Deleted {} message(s)".format(len(deleted)))
+                logger.info(
+                    f"Deleted {len(deleted)} spam message(s) by {message.author.name}"
+                )
             return deleted
+
+        logger.info(
+            f"Can't delete spam message"
+            f"Don't have 'manage messages' permissions in '{message.guild}'"
+        )
         return None
 
-    async def check_spam(self, message):
+    async def check_spam(self, message: discord.Message):
         retry_after = self.ratelimit_check(self._spam_cooldown, message)
+
+        slowmode = self._user_slowmode_cooldowns.get(message.author.id)
+        slowmode_used = None
+        if slowmode is not None:
+            slowmode_after = slowmode.update_rate_limit()
+            if slowmode_after is not None and (
+                retry_after is None or slowmode_after < retry_after
+            ):
+                retry_after = slowmode_after
+                slowmode_used = slowmode
+
         if retry_after is None:
             return
 
@@ -1150,20 +1303,9 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         report_after = self.ratelimit_check(self._spam_report_cooldown, message)
         deleted = None
 
+        deleted = await self._purge(message)
         if report_after is None:
-            deleted = await self._purge(message)
-            await self.report_spam(message, deleted)
-        else:
-            if utils.can_bot_manage_messages(message.channel):
-                try:
-                    await message.delete()
-                except discord.NotFound:
-                    pass
-            else:
-                logger.info(
-                    f"Can't delete spam message"
-                    f"Don't have 'manage messages' permissions in '{message.guild}'"
-                )
+            await self.report_spam(message, deleted, slowmode_used)
 
         if notify_after is None:
             delete_after = (
@@ -1179,16 +1321,14 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
 
             await message.channel.send(
                 f"ఠ_ఠ Slow down, {message.author.mention}! You are spamming! {deleted_msg}"
-                f"You may send messages again in {round(retry_after)} seconds.",
+                f"You may send messages again in `{round(retry_after)}` seconds.",
                 allowed_mentions=discord.AllowedMentions.none(),
                 delete_after=delete_after,
             )
 
-        if report_after is None:
-            await asyncio.sleep(self.per + 1)
-            await self._purge(message)
-
-    async def report_spam(self, message, deleted):
+    async def report_spam(
+        self, message, deleted, slowmode_used: Optional[commands.Cooldown] = None
+    ):
         logger.important(f"Detected spam by {self.format_caller(message)}!")
 
         if deleted is None:
@@ -1197,11 +1337,13 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         member = message.author
         embed = discord.Embed()
         embed.set_author(name=member.name, icon_url=member.avatar_url)
-        embed.title = ":warning: Warning! Message spam!"
+        embed.title = f":warning: Warning! {'Slowmode triggered' if slowmode_used is not None else 'Message spam'}!"
+        rate = slowmode_used.rate if slowmode_used is not None else self.rate
+        per = slowmode_used.per if slowmode_used is not None else self.per
         embed.description = (
             f"{member.mention} {member} (ID {member.id}) "
             f"[*mobile link*](https://discordapp.com/users/{member.id}/)\n"
-            f"Sending messages faster than {self.rate} messages per {self.per} seconds\n"
+            f"Sending messages faster than `{rate}` messages per `{per:.1f}` seconds\n"
             f"Deleted **{len(deleted)}** messages automatically.\n"
         )
 
