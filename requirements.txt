@@ -7,5 +7,5 @@ aiohttp # version is dictated by other dependencies
 python-dateutil == 2.9.0.post0
 fuzzywuzzy == 0.18.0
 colour == 0.1.5
-psutil == 5.9.0
+psutil == 6.0.0
 Pillow == 9.0.1
