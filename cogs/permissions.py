@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class BotAdmins(Model):
-    id = fields.IntField(pk=True)
+    id = fields.IntField(pk=True, generated=False)
     user_id = fields.BigIntField()
     permitted = fields.BooleanField(default=True)
 

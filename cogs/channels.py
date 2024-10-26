@@ -52,6 +52,7 @@ class ChannelType(Enum):
 
 
 class ChannelSetup(Model):
+    id = fields.IntField(pk=True, generated=False)
     guild_id = fields.BigIntField()
     channel_id = fields.BigIntField()
     channel_type = fields.IntField()

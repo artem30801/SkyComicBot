@@ -31,6 +31,7 @@ activities = {
 
 
 class GuildGreetings(Model):
+    id = fields.IntField(pk=True, generated=False)
     guild_id = fields.BigIntField(unique=True)
     greeting_text = fields.TextField(default="")
 

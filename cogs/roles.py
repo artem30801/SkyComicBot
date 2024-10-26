@@ -22,7 +22,7 @@ group_number = db_utils.NextNumber()
 
 
 class Role(Model):
-    id = fields.IntField(pk=True)
+    id = fields.IntField(pk=True, generated=False)
     name = fields.CharField(max_length=250, unique=True, description="Name of the role")
     color = db_utils.ColorField(default=discord.Colour(0), description="Color of the role")
     number = fields.IntField(default=role_number, description="Priority (ordering) of the role")  # default=role_number,
@@ -42,7 +42,7 @@ class Role(Model):
 
 
 class RoleGroup(Model):
-    id = fields.IntField(pk=True)
+    id = fields.IntField(pk=True, generated=False)
     name = fields.CharField(max_length=250, unique=True, description="Name of the group")
     number = fields.IntField(default=group_number,
                              description="Priority (ordering) of the group")  # default=group_number,

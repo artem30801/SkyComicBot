@@ -55,7 +55,7 @@ class StatusType(Enum):
 
 
 class StatusMessage(Model):
-    id = fields.IntField(pk=True)
+    id = fields.IntField(pk=True, generated=False)
     guild_id = fields.BigIntField()
     channel_id = fields.BigIntField()
     message_id = fields.BigIntField()
@@ -63,7 +63,7 @@ class StatusMessage(Model):
 
 
 class UserSlowmode(Model):
-    user_id = fields.BigIntField(pk=True)
+    user_id = fields.BigIntField(pk=True, generated=False)
     rate = fields.IntField()
     per = fields.IntField()
 

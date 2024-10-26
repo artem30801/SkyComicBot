@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 class Timezones(Model):
+    id = fields.IntField(pk=True, generated=False)
     member_id = fields.BigIntField()
     member_timezone = fields.TextField()
 
