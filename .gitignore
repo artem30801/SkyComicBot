@@ -5,6 +5,7 @@ emotes/
 misc/
 reactions/
 comic_storage/
+data/
 
 settings.py
 last_activity
