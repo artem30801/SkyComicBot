@@ -87,7 +87,7 @@ async def main():
     )
     logging.getLogger("tortoise").setLevel(logging.INFO)
     logging.getLogger("db_client").setLevel(logging.INFO)
-    logging.getLogger("aiomysql").setLevel(logging.INFO)
+    logging.getLogger("aiosqlite").setLevel(logging.INFO)
     logging.getLogger("discord.client").setLevel(logging.CRITICAL)
     logging.getLogger("discord.gateway").setLevel(logging.ERROR)
     logging.getLogger("discord.http").setLevel(logging.ERROR)
