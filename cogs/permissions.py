@@ -134,7 +134,7 @@ class Permissions(utils.AutoLogCog):
         if await whitelisted(member):
             raise commands.BadArgument(f"{member.display_name} is already whitelisted!")
 
-        await BotAdmins.create(user_id=member.id)
+        await BotAdmins.create(id=member.id, user_id=member.id)
         await ctx.send(f"Granted bot access to {member.mention}",
                        allowed_mentions=discord.AllowedMentions.none(),
                        hidden=True,

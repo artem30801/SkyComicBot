@@ -347,6 +347,8 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         await ctx.defer(hidden=True)
 
         params = await self.group_processor.process(params)
+        # this ID is used in the discord command parameters, so it has to fit in int53 to be fine with Discord
+        params['id'] = int(ctx.interaction_id) % (1 << 53)
         instance = await RoleGroup.create(**params)
         logger.db(f"Added role group '{instance.name}' with  params '{params}'")
 
@@ -655,6 +657,7 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
 
         await ctx.defer(hidden=True)
         params = await self.role_processor.process(params)
+        params['id'] = int(ctx.interaction_id)
         instance = await Role.create(**params)
         await self.update_guilds_roles()
 

@@ -1245,6 +1245,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         if not status_message:
             # Can't use get_or_create since message_id is mandatory and I don't want to make it not mandatory
             status_message = StatusMessage(
+                id=message.id,
                 guild_id=message.guild.id,
                 channel_id=message.channel.id,
                 status_type=status_type.value,
