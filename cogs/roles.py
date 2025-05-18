@@ -899,7 +899,8 @@ class Roles(utils.AutoLogCog, utils.StartupCog):
         group = group or (await RoleGroup.get_or_create(name=utils.snapshot_role_group))[0]
         number = await db_utils.get_max_number(Role)
         await db_utils.reshuffle(Role, number)
-        db_role = Role(name=role.name,
+        db_role = Role(id=role.id,
+                       name=role.name,
                        color=role.color.value,
                        number=number,
                        archived=False,
