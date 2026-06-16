@@ -139,6 +139,20 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             1, 15 * 60, commands.BucketType.guild
         )
 
+        # Role-mention spam: N messages with role pings within a window triggers action
+        self.role_mention_rate = 3          # role-ping messages allowed
+        self.role_mention_per = 5 * 60      # seconds in the sliding window
+        self.role_mention_min_channels = 2  # must span at least this many channels
+        self.role_mention_purge_lookback = timedelta(hours=1)
+        self._role_mention_cooldown = commands.CooldownMapping.from_cooldown(
+            self.role_mention_rate, self.role_mention_per, commands.BucketType.user
+        )
+        self._role_mention_report_cooldown = commands.CooldownMapping.from_cooldown(
+            1, 15 * 60, commands.BucketType.user
+        )
+        # {user_id: deque of (utc_datetime, channel_id)}
+        self._role_mention_history: Dict[int, collections.deque] = {}
+
         self._user_slowmode_cooldowns: Dict[int, commands.Cooldown] = dict()
 
         self.status_messages = {status_type: {} for status_type in StatusType}
@@ -175,6 +189,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         for status_type in StatusType:
             await self.update_status_tasks(status_type)
         await self.update_user_slowmodes()
+        self._cleanup_role_mention_history.start()
 
     @commands.Cog.listener()
     async def on_message(self, message):
@@ -184,6 +199,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             return
 
         await self.check_spam(message)
+        await self.check_role_mention_spam(message)
 
     @commands.Cog.listener()
     async def on_message_delete(self, message: discord.Message):
@@ -408,6 +424,16 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
     @tasks.loop(minutes=5)
     async def update_bot_status(self):
         await self.update_status(StatusType.BOT_STATUS)
+
+    @tasks.loop(minutes=10)
+    async def _cleanup_role_mention_history(self):
+        cutoff = datetime.utcnow() - timedelta(seconds=self.role_mention_per)
+        stale = [uid for uid, h in self._role_mention_history.items()
+                 if not h or h[-1][0] < cutoff]
+        for uid in stale:
+            del self._role_mention_history[uid]
+        if stale:
+            logger.debug(f"Cleaned up role mention history for {len(stale)} user(s)")
 
     @tasks.loop(hours=1)
     async def update_guilds_status(self):
@@ -1349,6 +1375,81 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         )
 
         embed.colour = discord.Colour.red()
+        await self.send_mod_log(member.guild, embed=embed)
+
+    async def check_role_mention_spam(self, message: discord.Message):
+        if not message.role_mentions:
+            return
+
+        retry_after = self.ratelimit_check(self._role_mention_cooldown, message)
+
+        user_id = message.author.id
+        now = datetime.utcnow()
+        history = self._role_mention_history.setdefault(user_id, collections.deque())
+        cutoff = now - timedelta(seconds=self.role_mention_per)
+        while history and history[0][0] < cutoff:
+            history.popleft()
+        history.append((now, message.channel.id))
+
+        if retry_after is None:
+            return
+
+        unique_channels = len({ch_id for _, ch_id in history})
+        if unique_channels < self.role_mention_min_channels:
+            return
+
+        deleted_count = await self._purge_guild_wide(
+            message.author, self.role_mention_purge_lookback
+        )
+
+        report_after = self.ratelimit_check(self._role_mention_report_cooldown, message)
+        if report_after is None:
+            await self.report_role_mention_spam(message, deleted_count, unique_channels)
+
+    async def _purge_guild_wide(self, member: discord.Member, lookback: timedelta) -> int:
+        cutoff = datetime.utcnow() - lookback
+
+        def is_author(m):
+            return m.author == member
+
+        total_deleted = 0
+        for channel in member.guild.text_channels:
+            if not utils.can_bot_manage_messages(channel):
+                continue
+            try:
+                deleted = await channel.purge(after=cutoff, check=is_author, bulk=True)
+                total_deleted += len(deleted)
+            except (discord.Forbidden, discord.NotFound, discord.HTTPException):
+                pass
+        logger.info(
+            f"Guild-wide purge: deleted {total_deleted} message(s) by {member} ({member.id})"
+        )
+        return total_deleted
+
+    async def report_role_mention_spam(
+        self, message: discord.Message, deleted_count: int, channel_count: int
+    ):
+        logger.important(
+            f"Detected role mention spam by {self.format_caller(message)}!"
+        )
+
+        member = message.author
+        mentioned_roles = ", ".join(role.mention for role in message.role_mentions)
+
+        embed = discord.Embed()
+        embed.set_author(name=member.name, icon_url=member.avatar_url)
+        embed.title = ":warning: Warning! Role mention spam detected!"
+        embed.colour = discord.Colour.red()
+        embed.description = (
+            f"{member.mention} {member} (ID {member.id}) "
+            f"[*mobile link*](https://discordapp.com/users/{member.id}/)\n"
+            f"Sent **{self.role_mention_rate}+** role-mention messages "
+            f"across **{channel_count}** channel(s) "
+            f"within `{self.role_mention_per // 60}` minutes.\n"
+            f"Roles pinged: {mentioned_roles}\n"
+            f"Deleted **{deleted_count}** message(s) across all channels automatically."
+        )
+
         await self.send_mod_log(member.guild, embed=embed)
 
     def check_nick_blank(self, member):
