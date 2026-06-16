@@ -2,6 +2,7 @@ import asyncio
 import collections
 import logging
 import math
+import time
 from typing import Dict, List, Union
 
 import psutil
@@ -1394,6 +1395,10 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         if retry_after is None:
             return
 
+        # Slide the window forward so each new ping after initial trigger
+        # restarts the 5-minute clock instead of letting it expire naturally
+        self._role_mention_cooldown.get_bucket(message)._window = time.time()
+
         unique_channels = len({ch_id for _, ch_id in history})
         if unique_channels < self.role_mention_min_channels:
             return
@@ -1477,10 +1482,10 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             member.joined_at or datetime.utcnow(), "Joined:\n{} ago"
         )
 
-    def _check_recent(self, time, format_string="{}"):  # true = ok
+    def _check_recent(self, dt, format_string="{}"):  # true = ok
         now = datetime.utcnow()
-        delta = relativedelta.relativedelta(now, time)
-        abs_delta = now - time
+        delta = relativedelta.relativedelta(now, dt)
+        abs_delta = now - dt
         return abs_delta >= self.recent_join, format_string.format(
             utils.display_delta(delta)
         )
