@@ -117,6 +117,31 @@ class Service(utils.AutoLogCog, utils.StartupCog):
         for chunk in db_utils.chunks_split(logs):
             await ctx.send("\n".join(chunk))
 
+    @cog_ext.cog_subcommand(base="bot", name="permissions", guild_ids=guild_ids)
+    async def permissions(self, ctx: SlashContext):
+        """Shows the bot's own Discord permissions in this server and channel"""
+        if ctx.guild is None:
+            await ctx.send("This command only works inside a server.", hidden=True)
+            return
+
+        me = ctx.guild.me
+        guild_perms = me.guild_permissions
+        channel_perms = ctx.channel.permissions_for(me)
+
+        def fmt(perms):
+            return "\n".join(f"{'✅' if value else '❌'} {name.replace('_', ' ').title()}"
+                             for name, value in sorted(perms))
+
+        embed = discord.Embed(title="My Discord permissions",
+                              description=f"In server **{ctx.guild.name}**, channel **#{ctx.channel.name}**",
+                              color=utils.embed_color)
+        if guild_perms.administrator:
+            embed.description += "\n⚠️ I have **Administrator** — all permissions are granted."
+        embed.add_field(name="Server-wide", value=fmt(guild_perms), inline=True)
+        embed.add_field(name="This channel", value=fmt(channel_perms), inline=True)
+
+        await ctx.send(embed=embed, hidden=True)
+
 
 def setup(bot):
     bot.add_cog(Service(bot))

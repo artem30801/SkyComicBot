@@ -13,6 +13,9 @@ from tortoise import Tortoise
 
 import cogs.cog_utils as utils
 from cogs.logging_utils import BufferingSocketHandler
+from cogs.discord_patches import apply_patches
+
+apply_patches()  # backport timeout/moderate_members support into discord.py 1.7.3
 
 
 version = "3.8.2"  # bump this with update releases
