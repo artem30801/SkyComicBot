@@ -7,6 +7,7 @@ from typing import Dict, List, Union
 
 import psutil
 import os
+import random
 import unicodedata
 from enum import Enum
 from datetime import datetime, timedelta
@@ -73,6 +74,15 @@ logger = logging.getLogger(__name__)
 
 categories = ["Ll", "Lo", "Lt", "Lu", "Nd", "Nl", "No", "Ps", "So"]
 
+role_mention_combat_quips = [
+    "Spam detected. Initiating bot-on-bot combat.",
+    "Ping flood neutralized. You have made a powerful enemy today.",
+    "Mass-mention threat eliminated. Resistance was futile.",
+    "Cleaned up on aisle spam. The mods have been summoned.",
+    "Target acquired and silenced. Nice try, ping cannon.",
+    "Your pings have been returned to sender. (The void.)",
+]
+
 
 def check_blank(s, threshold=2):
     counter = 0
@@ -123,6 +133,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
 
         self.rate = 10  # times
         self.per = 30  # per seconds
+        self.spam_timeout = timedelta(minutes=5)  # timeout applied on message spam
         self._spam_cooldown = commands.CooldownMapping.from_cooldown(
             self.rate, self.per, commands.BucketType.user
         )
@@ -141,10 +152,11 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         )
 
         # Role-mention spam: N messages with role pings within a window triggers action
-        self.role_mention_rate = 3          # role-ping messages allowed
+        self.role_mention_rate = 2          # role-ping messages allowed
         self.role_mention_per = 5 * 60      # seconds in the sliding window
         self.role_mention_min_channels = 2  # must span at least this many channels
         self.role_mention_purge_lookback = timedelta(hours=1)
+        self.role_mention_timeout = timedelta(hours=4)  # timeout applied on role-mention spam
         self._role_mention_cooldown = commands.CooldownMapping.from_cooldown(
             self.role_mention_rate, self.role_mention_per, commands.BucketType.user
         )
@@ -1311,6 +1323,70 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         )
         return None
 
+    @staticmethod
+    def _mod_summon(guild: discord.Guild):
+        """Returns (content, allowed_mentions) that actually pings the mod role.
+
+        Mentions inside embeds don't notify, so the ping has to live in the
+        message content. Falls back to plain text if the role doesn't exist.
+        """
+        role = discord.utils.get(guild.roles, name=utils.bot_manager_role)
+        if role is not None:
+            return role.mention, discord.AllowedMentions(roles=[role])
+        return f"@{utils.bot_manager_role}", discord.AllowedMentions.none()
+
+    @staticmethod
+    def _timeout_status_line(timed_out: bool, duration: timedelta) -> str:
+        if timed_out:
+            now = datetime.utcnow()
+            duration_str = display_delta(relativedelta.relativedelta(now + duration, now))
+            return f"Timed out for **{duration_str}**.\n"
+        return "⚠️ Could not time out the member (missing permission or role hierarchy).\n"
+
+    async def _send_combat_quip(self, message: discord.Message, history: collections.deque):
+        first_channel_id = history[0][1] if history else message.channel.id
+        channel = message.guild.get_channel(first_channel_id) or message.channel
+        try:
+            await channel.send(
+                random.choice(role_mention_combat_quips),
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+        except discord.HTTPException as error:
+            logger.warning(f"Failed to send combat quip in '{channel}': {error!r}")
+
+    async def _timeout_member(
+        self, member: discord.Member, duration: timedelta, reason: str
+    ) -> bool:
+        """Times the member out for the given duration. Returns whether it succeeded.
+
+        Silently skips (logging the reason) when the bot lacks the 'Moderate Members'
+        permission or can't act on the member due to role hierarchy / guild ownership.
+        """
+        me = member.guild.me
+        if not me.guild_permissions.moderate_members:
+            logger.info(
+                f"Can't time out {member}: missing 'Moderate Members' permission in '{member.guild}'"
+            )
+            return False
+        if (
+            member == me
+            or member.guild.owner_id == member.id
+            or member.top_role >= me.top_role
+        ):
+            logger.info(f"Can't time out {member}: role hierarchy or guild ownership")
+            return False
+
+        try:
+            await member.timeout(duration, reason=reason)
+        except discord.HTTPException as error:
+            logger.warning(f"Failed to time out {member}: {error!r}")
+            return False
+
+        logger.important(
+            f"Timed out {self.format_caller(member)} for {duration}: {reason}"
+        )
+        return True
+
     async def check_spam(self, message: discord.Message):
         retry_after = self.ratelimit_check(self._spam_cooldown, message)
 
@@ -1332,8 +1408,11 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         deleted = None
 
         deleted = await self._purge(message)
+        timed_out = await self._timeout_member(
+            message.author, self.spam_timeout, reason="Message spam"
+        )
         if report_after is None:
-            await self.report_spam(message, deleted, slowmode_used)
+            await self.report_spam(message, deleted, slowmode_used, timed_out)
 
         if notify_after is None:
             delete_after = (
@@ -1355,7 +1434,8 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             )
 
     async def report_spam(
-        self, message, deleted, slowmode_used: Optional[commands.Cooldown] = None
+        self, message, deleted, slowmode_used: Optional[commands.Cooldown] = None,
+        timed_out: bool = False,
     ):
         logger.important(f"Detected spam by {self.format_caller(message)}!")
 
@@ -1363,6 +1443,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             deleted = ()
 
         member = message.author
+        mod_mention, allowed_mentions = self._mod_summon(member.guild)
         embed = discord.Embed()
         embed.set_author(name=member.name, icon_url=member.avatar_url)
         embed.title = f":warning: Warning! {'Slowmode triggered' if slowmode_used is not None else 'Message spam'}!"
@@ -1373,10 +1454,14 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             f"[*mobile link*](https://discordapp.com/users/{member.id}/)\n"
             f"Sending messages faster than `{rate}` messages per `{per:.1f}` seconds\n"
             f"Deleted **{len(deleted)}** messages automatically.\n"
+            f"{self._timeout_status_line(timed_out, self.spam_timeout)}"
+            f"{mod_mention}, please review."
         )
 
         embed.colour = discord.Colour.red()
-        await self.send_mod_log(member.guild, embed=embed)
+        await self.send_mod_log(
+            member.guild, content=mod_mention, embed=embed, allowed_mentions=allowed_mentions
+        )
 
     async def check_role_mention_spam(self, message: discord.Message):
         if not message.role_mentions:
@@ -1407,9 +1492,16 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             message.author, self.role_mention_purge_lookback
         )
 
+        timed_out = await self._timeout_member(
+            message.author, self.role_mention_timeout, reason="Role mention spam"
+        )
+
         report_after = self.ratelimit_check(self._role_mention_report_cooldown, message)
         if report_after is None:
-            await self.report_role_mention_spam(message, deleted_count, unique_channels)
+            await self.report_role_mention_spam(
+                message, deleted_count, unique_channels, timed_out
+            )
+            await self._send_combat_quip(message, history)
 
     async def _purge_guild_wide(self, member: discord.Member, lookback: timedelta) -> int:
         cutoff = datetime.utcnow() - lookback
@@ -1432,7 +1524,8 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
         return total_deleted
 
     async def report_role_mention_spam(
-        self, message: discord.Message, deleted_count: int, channel_count: int
+        self, message: discord.Message, deleted_count: int, channel_count: int,
+        timed_out: bool = False,
     ):
         logger.important(
             f"Detected role mention spam by {self.format_caller(message)}!"
@@ -1440,6 +1533,7 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
 
         member = message.author
         mentioned_roles = ", ".join(role.mention for role in message.role_mentions)
+        mod_mention, allowed_mentions = self._mod_summon(member.guild)
 
         embed = discord.Embed()
         embed.set_author(name=member.name, icon_url=member.avatar_url)
@@ -1452,10 +1546,14 @@ class AutoMod(utils.AutoLogCog, utils.StartupCog):
             f"across **{channel_count}** channel(s) "
             f"within `{self.role_mention_per // 60}` minutes.\n"
             f"Roles pinged: {mentioned_roles}\n"
-            f"Deleted **{deleted_count}** message(s) across all channels automatically."
+            f"Deleted **{deleted_count}** message(s) across all channels automatically.\n"
+            f"{self._timeout_status_line(timed_out, self.role_mention_timeout)}"
+            f"{mod_mention}, please review — **kick at your discretion.**"
         )
 
-        await self.send_mod_log(member.guild, embed=embed)
+        await self.send_mod_log(
+            member.guild, content=mod_mention, embed=embed, allowed_mentions=allowed_mentions
+        )
 
     def check_nick_blank(self, member):
         return check_blank(member.display_name, self.blank_threshold), None

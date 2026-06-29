@@ -118,6 +118,7 @@ class Service(utils.AutoLogCog, utils.StartupCog):
             await ctx.send("\n".join(chunk))
 
     @cog_ext.cog_subcommand(base="bot", name="permissions", guild_ids=guild_ids)
+    @has_server_perms()
     async def permissions(self, ctx: SlashContext):
         """Shows the bot's own Discord permissions in this server and channel"""
         if ctx.guild is None:
